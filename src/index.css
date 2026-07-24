@@ -12,4 +12,6 @@ body {
   margin: 0;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  background-color: #e6f0f8; /* cielo-100 */
+  color: #37596f; /* cielo-800 */
 }
