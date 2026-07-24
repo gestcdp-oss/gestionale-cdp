@@ -1,45 +1,63 @@
-import { useAuth } from '../hooks/useAuth'
+import { Link } from 'react-router-dom'
 
 const LOGO = `${import.meta.env.BASE_URL}logo.svg`
 
 export default function HomePage() {
-  const { profilo, esci } = useAuth()
-
   return (
-    <div className="min-h-full bg-slate-50">
-      <header className="flex items-center justify-between border-b bg-white px-6 py-3">
-        <div className="flex items-center gap-2">
-          <img src={LOGO} alt="" className="h-8 w-8" />
-          <h1 className="font-semibold tracking-tight text-slate-800">TR.A.V.I.</h1>
-        </div>
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-slate-500">
-            {profilo?.nome || profilo?.email}
-            {profilo?.ruolo === 'admin' && <span className="ml-1 text-emerald-600">· admin</span>}
-          </span>
-          <button
-            onClick={() => void esci()}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-600 transition hover:bg-slate-50"
-          >
-            Esci
-          </button>
-        </div>
-      </header>
+    <div>
+      <div className="mb-8 flex flex-col items-center text-center">
+        <img src={LOGO} alt="TR.A.V.I." className="h-24 w-24" />
+        <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-800">TR.A.V.I.</h1>
+        <p className="mt-1 text-sm text-slate-500">Tracciamento Attività Verifica Immobili</p>
+      </div>
 
-      <main className="mx-auto max-w-3xl p-6">
-        <div className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center">
-          <img src={LOGO} alt="TR.A.V.I." className="h-28 w-28" />
-          <h2 className="mt-4 text-2xl font-bold tracking-tight text-slate-800">TR.A.V.I.</h2>
-          <p className="mt-1 max-w-md text-sm text-slate-500">
-            Tracciamento Attività Verifica Immobili
-          </p>
-          <div className="mt-6 w-full border-t border-slate-100 pt-6">
-            <p className="mx-auto max-w-md text-sm text-slate-500">
-              Impalcatura pronta e dati protetti. Da qui costruiamo i moduli del gestionale.
-            </p>
-          </div>
-        </div>
-      </main>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Modulo
+          to="/immobili"
+          titolo="Inserimento Immobile"
+          desc="Anagrafica immobili: inserisci, modifica e consulta gli asset."
+          attivo
+        />
+        <Modulo
+          titolo="Attività"
+          desc="Building Manager, Due Diligence, Lavori, Prof SIA, Verde, Ambiente, Resp Amianto, Vigilanze, DUVRI."
+        />
+        <Modulo titolo="Report e certificati" desc="Generazione report e certificati per immobile e per attività." />
+      </div>
     </div>
   )
+}
+
+function Modulo({
+  to,
+  titolo,
+  desc,
+  attivo,
+}: {
+  to?: string
+  titolo: string
+  desc: string
+  attivo?: boolean
+}) {
+  const contenuto = (
+    <div
+      className={`h-full rounded-xl border p-5 transition ${
+        attivo
+          ? 'border-slate-200 bg-white hover:border-amber-300 hover:shadow-sm'
+          : 'border-dashed border-slate-200 bg-slate-50'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold text-slate-800">{titolo}</h2>
+        {!attivo && (
+          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+            presto
+          </span>
+        )}
+      </div>
+      <p className="mt-2 text-sm text-slate-500">{desc}</p>
+    </div>
+  )
+
+  return attivo && to ? <Link to={to}>{contenuto}</Link> : contenuto
 }

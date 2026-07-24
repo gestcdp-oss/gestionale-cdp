@@ -17,6 +17,12 @@ credentials*.json
 *service-account*.json
 .mcp.json
 
+# dati riservati: fogli di calcolo mai nel repo pubblico
+*.xlsx
+*.xlsb
+*.xls
+*.xlsm
+
 # sistema
 .DS_Store
 Thumbs.db
