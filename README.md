@@ -1,6 +1,6 @@
 # TR.A.V.I. — Tracciamento Attività Verifica Immobili
 
-Gestionale aziendale interno (nome in codice del progetto: `gestionale-cdp`).
+Gestionale aziendale interno (repo: `travi-oss/travi-gest`).
 Accesso riservato tramite login Google + whitelist di email autorizzate.
 
 ## Stack

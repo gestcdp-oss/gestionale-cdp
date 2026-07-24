@@ -5,8 +5,8 @@ import { execSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 
 // Nome del repository GitHub: determina il base path su GitHub Pages
-// (https://gestcdp-oss.github.io/gestionale-cdp/)
-const REPO = 'gestionale-cdp'
+// (https://travi-oss.github.io/travi-gest/)
+const REPO = 'travi-gest'
 
 // Versione dell'app = short SHA del commit. In CI arriva da GITHUB_SHA,
 // in locale da git. Serve al controllo "nuova versione disponibile".
