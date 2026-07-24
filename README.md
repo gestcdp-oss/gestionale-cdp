@@ -1,6 +1,7 @@
-# Gestionale CDP
+# GEST.AP.O — Gestionale Applicativo Organizzativo
 
-Gestionale aziendale interno. Accesso riservato tramite login Google + whitelist di email autorizzate.
+Gestionale aziendale interno (nome in codice del progetto: `gestionale-cdp`).
+Accesso riservato tramite login Google + whitelist di email autorizzate.
 
 ## Stack
 - Frontend: React 18 + Vite 5 + TypeScript + Tailwind

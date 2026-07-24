@@ -6,7 +6,7 @@ export default function HomePage() {
   return (
     <div className="min-h-full bg-slate-50">
       <header className="flex items-center justify-between border-b bg-white px-6 py-3">
-        <h1 className="font-semibold text-slate-800">Gestionale CDP</h1>
+        <h1 className="font-semibold text-slate-800">GEST.AP.O</h1>
         <div className="flex items-center gap-3 text-sm">
           <span className="text-slate-500">
             {profilo?.nome || profilo?.email}

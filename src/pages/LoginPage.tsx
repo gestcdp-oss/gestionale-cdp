@@ -14,8 +14,11 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-full items-center justify-center bg-slate-100 p-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-lg">
-        <h1 className="text-2xl font-bold text-slate-800">Gestionale CDP</h1>
-        <p className="mt-1 text-sm text-slate-500">Accesso riservato</p>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-800">GEST.AP.O</h1>
+        <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-400">
+          Gestionale Applicativo Organizzativo
+        </p>
+        <p className="mt-3 text-sm text-slate-500">Accesso riservato</p>
 
         {nonAutorizzato && (
           <div className="mt-5 rounded-lg bg-red-50 p-3 text-sm text-red-700">
