@@ -16,12 +16,12 @@ export default function LoginPage() {
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-lg">
         <img
           src={`${import.meta.env.BASE_URL}logo.svg`}
-          alt="T.E.G.O.L.A."
+          alt="TR.A.V.I."
           className="mx-auto h-20 w-20"
         />
-        <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-800">T.E.G.O.L.A.</h1>
+        <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-800">TR.A.V.I.</h1>
         <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-400">
-          Tracking Elementi, Gestione Operativa, Locazioni e Asset
+          Tracciamento Attività Verifica Immobili
         </p>
         <p className="mt-3 text-sm text-slate-500">Accesso riservato</p>
 

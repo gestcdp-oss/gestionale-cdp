@@ -1,4 +1,4 @@
-# T.E.G.O.L.A. — Tracking Elementi, Gestione Operativa, Locazioni e Asset
+# TR.A.V.I. — Tracciamento Attività Verifica Immobili
 
 Gestionale aziendale interno (nome in codice del progetto: `gestionale-cdp`).
 Accesso riservato tramite login Google + whitelist di email autorizzate.
