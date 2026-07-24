@@ -1,4 +1,4 @@
-# GEST.AP.O — Gestionale Applicativo Organizzativo
+# T.E.G.O.L.A. — Tracking Elementi, Gestione Operativa, Locazioni e Asset
 
 Gestionale aziendale interno (nome in codice del progetto: `gestionale-cdp`).
 Accesso riservato tramite login Google + whitelist di email autorizzate.
