@@ -27,6 +27,7 @@ export default function ImmobiliPage() {
   const [salvataggio, setSalvataggio] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
 
   // modifica inline
   const [editId, setEditId] = useState<string | null>(null)
@@ -57,6 +58,13 @@ export default function ImmobiliPage() {
   useEffect(() => {
     setPagina(1)
   }, [ricerca, perPagina])
+
+  // il toast di selezione sparisce da solo dopo 3 secondi
+  useEffect(() => {
+    if (!toast) return
+    const t = window.setTimeout(() => setToast(null), 3000)
+    return () => window.clearTimeout(t)
+  }, [toast])
 
   const portafogli = useMemo(
     () => Array.from(new Set(immobili.map((i) => i.portafoglio).filter(Boolean))).sort() as string[],
@@ -99,6 +107,13 @@ export default function ImmobiliPage() {
       if (im.denominazione.toLowerCase() === d) return `Esiste già un immobile con Denominazione "${den.trim()}".`
     }
     return null
+  }
+
+  // seleziona l'immobile: aggiorna header, mostra toast e riporta in cima
+  function selezionaImmobile(i: Immobile) {
+    seleziona({ id: i.id, asset: i.asset, denominazione: i.denominazione })
+    setToast(`Immobile selezionato: ${i.denominazione}`)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   // ---- inserimento ----
@@ -397,9 +412,7 @@ export default function ImmobiliPage() {
                       <td className="px-4 py-2 font-mono text-cielo-800">{i.asset}</td>
                       <td className="px-1 py-2 text-center">
                         <button
-                          onClick={() =>
-                            seleziona({ id: i.id, asset: i.asset, denominazione: i.denominazione })
-                          }
+                          onClick={() => selezionaImmobile(i)}
                           title="Seleziona immobile"
                           className={`rounded p-1 transition ${
                             selezionato?.id === i.id
@@ -460,6 +473,15 @@ export default function ImmobiliPage() {
           </div>
         )}
       </section>
+
+      {toast && (
+        <div className="fixed inset-x-0 top-4 z-50 flex justify-center px-4">
+          <div className="flex items-center gap-2 rounded-full bg-cielo-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg">
+            <IconaCheck />
+            {toast}
+          </div>
+        </div>
+      )}
 
       <datalist id="portafogli">
         {portafogli.map((p) => (
@@ -636,6 +658,14 @@ function IconaCestino() {
       <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
       <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
       <path d="M10 11v6M14 11v6" />
+    </svg>
+  )
+}
+
+function IconaCheck() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
     </svg>
   )
 }
