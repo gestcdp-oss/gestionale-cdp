@@ -1,10 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
+import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Immobile } from '../lib/tipi'
 
 const VUOTO = { asset: '', denominazione: '', portafoglio: '', localizzazione: '' }
 type Campi = typeof VUOTO
+type CampoOrdine = 'asset' | 'denominazione' | 'portafoglio' | 'localizzazione'
+type Ordine = { campo: CampoOrdine; dir: 'asc' | 'desc' }
 
 const inputCls =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-100'
@@ -14,6 +16,7 @@ const inputSm =
 export default function ImmobiliPage() {
   const [form, setForm] = useState<Campi>(VUOTO)
   const [immobili, setImmobili] = useState<Immobile[]>([])
+  const [ordine, setOrdine] = useState<Ordine>({ campo: 'asset', dir: 'asc' })
   const [caricamento, setCaricamento] = useState(true)
   const [salvataggio, setSalvataggio] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
@@ -35,7 +38,6 @@ export default function ImmobiliPage() {
     const { data, error } = await supabase
       .from('immobili')
       .select('id, asset, denominazione, portafoglio, localizzazione, creato_il')
-      .order('asset')
     if (!error && data) setImmobili(data as Immobile[])
     setCaricamento(false)
   }
@@ -48,6 +50,17 @@ export default function ImmobiliPage() {
     () => Array.from(new Set(immobili.map((i) => i.portafoglio).filter(Boolean))).sort() as string[],
     [immobili],
   )
+
+  const immobiliOrdinati = useMemo(() => {
+    const arr = [...immobili]
+    arr.sort((a, b) => {
+      const va = (a[ordine.campo] ?? '') as string
+      const vb = (b[ordine.campo] ?? '') as string
+      const cmp = va.localeCompare(vb, 'it', { numeric: true, sensitivity: 'base' })
+      return ordine.dir === 'asc' ? cmp : -cmp
+    })
+    return arr
+  }, [immobili, ordine])
 
   // Controllo duplicati lato client (l'unicità è comunque garantita dal DB).
   function duplicato(asset: string, den: string, escludiId?: string): string | null {
@@ -187,7 +200,7 @@ export default function ImmobiliPage() {
                 list="portafogli"
                 value={form.portafoglio}
                 onChange={(e) => setForm((f) => ({ ...f, portafoglio: e.target.value }))}
-                placeholder="es. CDP IMMOBILIARE in liquidazione"
+                placeholder="es. CDP Imm in liq"
                 className={inputCls}
               />
             </Campo>
@@ -235,10 +248,10 @@ export default function ImmobiliPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-slate-50 text-left text-slate-500">
-                <th className="px-4 py-2 font-medium">Asset</th>
-                <th className="px-4 py-2 font-medium">Denominazione</th>
-                <th className="px-4 py-2 font-medium">Portafoglio</th>
-                <th className="px-4 py-2 font-medium">Localizzazione</th>
+                <ThOrdinabile label="Asset" campo="asset" ordine={ordine} setOrdine={setOrdine} />
+                <ThOrdinabile label="Denominazione" campo="denominazione" ordine={ordine} setOrdine={setOrdine} />
+                <ThOrdinabile label="Portafoglio" campo="portafoglio" ordine={ordine} setOrdine={setOrdine} />
+                <ThOrdinabile label="Localizzazione" campo="localizzazione" ordine={ordine} setOrdine={setOrdine} />
                 <th className="w-24 px-2 py-2" />
               </tr>
             </thead>
@@ -256,7 +269,7 @@ export default function ImmobiliPage() {
                   </td>
                 </tr>
               ) : (
-                immobili.map((i) =>
+                immobiliOrdinati.map((i) =>
                   editId === i.id ? (
                     <Fragment key={i.id}>
                       <tr className="border-b bg-amber-50 last:border-0">
@@ -406,6 +419,51 @@ export default function ImmobiliPage() {
 function msgErrore(error: { code?: string; message: string }): string {
   if (error.code === '23505') return 'Esiste già un immobile con questo Asset o questa Denominazione.'
   return `Errore: ${error.message}`
+}
+
+function ThOrdinabile({
+  label,
+  campo,
+  ordine,
+  setOrdine,
+}: {
+  label: string
+  campo: CampoOrdine
+  ordine: Ordine
+  setOrdine: Dispatch<SetStateAction<Ordine>>
+}) {
+  const attivo = ordine.campo === campo
+  return (
+    <th className="px-4 py-2 font-medium">
+      <button
+        type="button"
+        onClick={() =>
+          setOrdine((o) => ({ campo, dir: o.campo === campo && o.dir === 'asc' ? 'desc' : 'asc' }))
+        }
+        className={`flex select-none items-center gap-1 transition hover:text-slate-700 ${
+          attivo ? 'text-slate-700' : ''
+        }`}
+      >
+        {label}
+        <FrecceOrdine attivo={attivo} dir={ordine.dir} />
+      </button>
+    </th>
+  )
+}
+
+function FrecceOrdine({ attivo, dir }: { attivo: boolean; dir: 'asc' | 'desc' }) {
+  const su = attivo && dir === 'asc'
+  const giu = attivo && dir === 'desc'
+  return (
+    <span className="ml-0.5 inline-flex flex-col leading-[0]">
+      <svg width="9" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={su ? 'text-amber-600' : 'text-slate-300'}>
+        <path d="M1 5l4-4 4 4" />
+      </svg>
+      <svg width="9" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={giu ? 'text-amber-600' : 'text-slate-300'}>
+        <path d="M1 1l4 4 4-4" />
+      </svg>
+    </span>
+  )
 }
 
 function Campo({ label, children }: { label: string; children: ReactNode }) {
