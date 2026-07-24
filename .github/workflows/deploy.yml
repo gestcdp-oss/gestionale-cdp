@@ -1,0 +1,43 @@
+name: Deploy su GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        env:
+          # Valori PUBBLICI (finiscono comunque nel bundle del sito).
+          # La sicurezza dei dati e garantita da RLS + login, non dalla segretezza di queste chiavi.
+          VITE_SUPABASE_URL: https://xrcicehiodrthytqtrun.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyY2ljZWhpb2RydGh5dHF0cnVuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ4OTc1NDcsImV4cCI6MjEwMDQ3MzU0N30.jLH0sFSpzPa42YGLBwXyg4wrgSqRVgkuznloSQk_q3M
+        run: npm run build
+
+      - name: Fallback SPA (deep-link)
+        run: cp dist/index.html dist/404.html
+
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          force_orphan: true

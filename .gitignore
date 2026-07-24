@@ -1,0 +1,24 @@
+# dipendenze e build
+node_modules
+dist
+dist-ssr
+
+# log
+*.log
+npm-debug.log*
+
+# ambiente (i segreti restano SOLO in locale)
+.env
+.env*.local
+
+# credenziali che non devono MAI finire nel repo
+client_secret*.json
+credentials*.json
+*service-account*.json
+.mcp.json
+
+# sistema
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
