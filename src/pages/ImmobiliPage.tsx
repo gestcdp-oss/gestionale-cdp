@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Immobile } from '../lib/tipi'
@@ -8,6 +8,8 @@ type Campi = typeof VUOTO
 
 const inputCls =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-100'
+const inputSm =
+  'w-full rounded border border-slate-300 px-2 py-1 text-sm outline-none transition focus:border-amber-400 focus:ring-1 focus:ring-amber-200'
 
 export default function ImmobiliPage() {
   const [form, setForm] = useState<Campi>(VUOTO)
@@ -17,12 +19,23 @@ export default function ImmobiliPage() {
   const [errore, setErrore] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
 
+  // modifica inline
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState<Campi>(VUOTO)
+  const [editErrore, setEditErrore] = useState<string | null>(null)
+  const [salvataggioMod, setSalvataggioMod] = useState(false)
+
+  // eliminazione
+  const [eliminaTarget, setEliminaTarget] = useState<Immobile | null>(null)
+  const [eliminaErrore, setEliminaErrore] = useState<string | null>(null)
+  const [eliminando, setEliminando] = useState(false)
+
   async function carica() {
     setCaricamento(true)
     const { data, error } = await supabase
       .from('immobili')
       .select('id, asset, denominazione, portafoglio, localizzazione, creato_il')
-      .order('denominazione')
+      .order('asset')
     if (!error && data) setImmobili(data as Immobile[])
     setCaricamento(false)
   }
@@ -32,20 +45,34 @@ export default function ImmobiliPage() {
   }, [])
 
   const portafogli = useMemo(
-    () => Array.from(new Set(immobili.map((i) => i.portafoglio).filter(Boolean))) as string[],
+    () => Array.from(new Set(immobili.map((i) => i.portafoglio).filter(Boolean))).sort() as string[],
     [immobili],
   )
 
-  function aggiorna(campo: keyof Campi, valore: string) {
-    setForm((f) => ({ ...f, [campo]: valore }))
+  // Controllo duplicati lato client (l'unicità è comunque garantita dal DB).
+  function duplicato(asset: string, den: string, escludiId?: string): string | null {
+    const a = asset.trim().toLowerCase()
+    const d = den.trim().toLowerCase()
+    for (const im of immobili) {
+      if (im.id === escludiId) continue
+      if (im.asset.toLowerCase() === a) return `Esiste già un immobile con Asset "${asset.trim()}".`
+      if (im.denominazione.toLowerCase() === d) return `Esiste già un immobile con Denominazione "${den.trim()}".`
+    }
+    return null
   }
 
+  // ---- inserimento ----
   async function salva(e: FormEvent) {
     e.preventDefault()
     setErrore(null)
     setOk(null)
     if (!form.asset.trim() || !form.denominazione.trim()) {
       setErrore('Numero Asset e Denominazione sono obbligatori.')
+      return
+    }
+    const dup = duplicato(form.asset, form.denominazione)
+    if (dup) {
+      setErrore(dup)
       return
     }
     setSalvataggio(true)
@@ -57,15 +84,74 @@ export default function ImmobiliPage() {
     })
     setSalvataggio(false)
     if (error) {
-      setErrore(
-        error.code === '23505'
-          ? 'Esiste già un immobile con questo Asset o questa Denominazione.'
-          : `Errore nel salvataggio: ${error.message}`,
-      )
+      setErrore(msgErrore(error))
       return
     }
     setOk(`Immobile "${form.denominazione.trim()}" salvato.`)
     setForm(VUOTO)
+    void carica()
+  }
+
+  // ---- modifica ----
+  function avviaModifica(im: Immobile) {
+    setEditErrore(null)
+    setEditId(im.id)
+    setEditForm({
+      asset: im.asset,
+      denominazione: im.denominazione,
+      portafoglio: im.portafoglio ?? '',
+      localizzazione: im.localizzazione ?? '',
+    })
+  }
+
+  function annullaModifica() {
+    setEditId(null)
+    setEditErrore(null)
+  }
+
+  async function salvaModifica() {
+    if (!editId) return
+    setEditErrore(null)
+    if (!editForm.asset.trim() || !editForm.denominazione.trim()) {
+      setEditErrore('Numero Asset e Denominazione sono obbligatori.')
+      return
+    }
+    const dup = duplicato(editForm.asset, editForm.denominazione, editId)
+    if (dup) {
+      setEditErrore(dup)
+      return
+    }
+    setSalvataggioMod(true)
+    const { error } = await supabase
+      .from('immobili')
+      .update({
+        asset: editForm.asset.trim(),
+        denominazione: editForm.denominazione.trim(),
+        portafoglio: editForm.portafoglio.trim() || null,
+        localizzazione: editForm.localizzazione.trim() || null,
+      })
+      .eq('id', editId)
+    setSalvataggioMod(false)
+    if (error) {
+      setEditErrore(msgErrore(error))
+      return
+    }
+    setEditId(null)
+    void carica()
+  }
+
+  // ---- eliminazione ----
+  async function confermaElimina() {
+    if (!eliminaTarget) return
+    setEliminaErrore(null)
+    setEliminando(true)
+    const { error } = await supabase.from('immobili').delete().eq('id', eliminaTarget.id)
+    setEliminando(false)
+    if (error) {
+      setEliminaErrore(`Errore nell'eliminazione: ${error.message}`)
+      return
+    }
+    setEliminaTarget(null)
     void carica()
   }
 
@@ -83,7 +169,7 @@ export default function ImmobiliPage() {
             <Campo label="Numero Asset *">
               <input
                 value={form.asset}
-                onChange={(e) => aggiorna('asset', e.target.value)}
+                onChange={(e) => setForm((f) => ({ ...f, asset: e.target.value }))}
                 placeholder="es. 0801"
                 className={inputCls}
               />
@@ -91,7 +177,7 @@ export default function ImmobiliPage() {
             <Campo label="Denominazione immobile *">
               <input
                 value={form.denominazione}
-                onChange={(e) => aggiorna('denominazione', e.target.value)}
+                onChange={(e) => setForm((f) => ({ ...f, denominazione: e.target.value }))}
                 placeholder="es. EX MT NAPOLI"
                 className={inputCls}
               />
@@ -100,20 +186,15 @@ export default function ImmobiliPage() {
               <input
                 list="portafogli"
                 value={form.portafoglio}
-                onChange={(e) => aggiorna('portafoglio', e.target.value)}
-                placeholder="es. CDP RA SGR - FSA"
+                onChange={(e) => setForm((f) => ({ ...f, portafoglio: e.target.value }))}
+                placeholder="es. CDP IMMOBILIARE in liquidazione"
                 className={inputCls}
               />
-              <datalist id="portafogli">
-                {portafogli.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
             </Campo>
             <Campo label="Localizzazione">
               <input
                 value={form.localizzazione}
-                onChange={(e) => aggiorna('localizzazione', e.target.value)}
+                onChange={(e) => setForm((f) => ({ ...f, localizzazione: e.target.value }))}
                 placeholder="es. Napoli — Campania"
                 className={inputCls}
               />
@@ -158,37 +239,173 @@ export default function ImmobiliPage() {
                 <th className="px-4 py-2 font-medium">Denominazione</th>
                 <th className="px-4 py-2 font-medium">Portafoglio</th>
                 <th className="px-4 py-2 font-medium">Localizzazione</th>
+                <th className="w-24 px-2 py-2" />
               </tr>
             </thead>
             <tbody>
               {caricamento ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
+                  <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
                     Caricamento…
                   </td>
                 </tr>
               ) : immobili.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
+                  <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
                     Nessun immobile inserito.
                   </td>
                 </tr>
               ) : (
-                immobili.map((i) => (
-                  <tr key={i.id} className="border-b last:border-0">
-                    <td className="px-4 py-2 font-mono text-slate-700">{i.asset}</td>
-                    <td className="px-4 py-2 text-slate-800">{i.denominazione}</td>
-                    <td className="px-4 py-2 text-slate-500">{i.portafoglio || '—'}</td>
-                    <td className="px-4 py-2 text-slate-500">{i.localizzazione || '—'}</td>
-                  </tr>
-                ))
+                immobili.map((i) =>
+                  editId === i.id ? (
+                    <Fragment key={i.id}>
+                      <tr className="border-b bg-amber-50 last:border-0">
+                        <td className="px-2 py-1.5">
+                          <input
+                            value={editForm.asset}
+                            onChange={(e) => setEditForm((f) => ({ ...f, asset: e.target.value }))}
+                            className={`${inputSm} font-mono`}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            value={editForm.denominazione}
+                            onChange={(e) => setEditForm((f) => ({ ...f, denominazione: e.target.value }))}
+                            className={inputSm}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            list="portafogli"
+                            value={editForm.portafoglio}
+                            onChange={(e) => setEditForm((f) => ({ ...f, portafoglio: e.target.value }))}
+                            className={inputSm}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            value={editForm.localizzazione}
+                            onChange={(e) => setEditForm((f) => ({ ...f, localizzazione: e.target.value }))}
+                            className={inputSm}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => void salvaModifica()}
+                              disabled={salvataggioMod}
+                              className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                            >
+                              {salvataggioMod ? '…' : 'Salva'}
+                            </button>
+                            <button
+                              onClick={annullaModifica}
+                              title="Annulla"
+                              className="rounded p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600"
+                            >
+                              <IconaX />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {editErrore && (
+                        <tr className="bg-amber-50">
+                          <td colSpan={5} className="px-4 pb-2 text-sm text-red-700">
+                            {editErrore}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ) : (
+                    <tr key={i.id} className="group border-b transition last:border-0 hover:bg-slate-50">
+                      <td className="px-4 py-2 font-mono text-slate-700">{i.asset}</td>
+                      <td className="px-4 py-2 text-slate-800">{i.denominazione}</td>
+                      <td className="px-4 py-2 text-slate-500">{i.portafoglio || '—'}</td>
+                      <td className="px-4 py-2 text-slate-500">{i.localizzazione || '—'}</td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center justify-end gap-1 opacity-0 transition group-hover:opacity-100">
+                          <button
+                            onClick={() => avviaModifica(i)}
+                            title="Modifica"
+                            className="rounded p-1.5 text-slate-400 transition hover:bg-amber-50 hover:text-amber-600"
+                          >
+                            <IconaMatita />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEliminaErrore(null)
+                              setEliminaTarget(i)
+                            }}
+                            title="Elimina"
+                            className="rounded p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                          >
+                            <IconaCestino />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ),
+                )
               )}
             </tbody>
           </table>
         </div>
       </section>
+
+      <datalist id="portafogli">
+        {portafogli.map((p) => (
+          <option key={p} value={p} />
+        ))}
+      </datalist>
+
+      {eliminaTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => !eliminando && setEliminaTarget(null)}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">
+                <IconaCestino />
+              </span>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">Elimina immobile</h3>
+                <p className="mt-2 text-sm text-slate-600">
+                  Stai per eliminare <b>{eliminaTarget.denominazione}</b> (Asset {eliminaTarget.asset}) e{' '}
+                  <b>TUTTI i dati collegati</b> a questo asset (attività, incarichi, ecc.). L'operazione è{' '}
+                  <b>irreversibile</b>.
+                </p>
+              </div>
+            </div>
+            {eliminaErrore && (
+              <p className="mt-3 rounded-lg bg-red-50 p-2 text-sm text-red-700">{eliminaErrore}</p>
+            )}
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setEliminaTarget(null)}
+                disabled={eliminando}
+                className="rounded-lg px-4 py-2 text-sm text-slate-600 transition hover:bg-slate-100"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={() => void confermaElimina()}
+                disabled={eliminando}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50"
+              >
+                {eliminando ? 'Eliminazione…' : 'Elimina definitivamente'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+function msgErrore(error: { code?: string; message: string }): string {
+  if (error.code === '23505') return 'Esiste già un immobile con questo Asset o questa Denominazione.'
+  return `Errore: ${error.message}`
 }
 
 function Campo({ label, children }: { label: string; children: ReactNode }) {
@@ -197,5 +414,33 @@ function Campo({ label, children }: { label: string; children: ReactNode }) {
       <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
       {children}
     </label>
+  )
+}
+
+function IconaMatita() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  )
+}
+
+function IconaCestino() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  )
+}
+
+function IconaX() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
   )
 }
