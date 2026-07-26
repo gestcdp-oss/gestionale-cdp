@@ -194,36 +194,60 @@ function creaScriptSostituzione(fileNuovo) {
   const dir = cartellaAppoggio()
   const script = path.join(dir, 'sostituisci.cmd')
   const backup = `${bersaglio}.precedente`
+  const registro = path.join(dir, 'registro-sostituzione.txt')
   const contenuto = `@echo off
 setlocal
 set "BERSAGLIO=${bersaglio}"
 set "NUOVO=${fileNuovo}"
 set "BACKUP=${backup}"
+set "LOG=${registro}"
+
+echo [%DATE% %TIME%] sostituzione avviata >> "%LOG%"
 
 rem attende la chiusura dell'app (max 60 secondi, poi la forza)
 set /a TENTATIVI=0
 :attesa
 tasklist /FI "IMAGENAME eq TRAVI.exe" /NH 2>nul | find /I "TRAVI.exe" >nul
-if errorlevel 1 goto sostituisci
+if errorlevel 1 goto libero
 set /a TENTATIVI+=1
 if %TENTATIVI% GEQ 60 (
+  echo [%TIME%] chiusura forzata >> "%LOG%"
   taskkill /F /IM TRAVI.exe >nul 2>&1
   timeout /t 2 /nobreak >nul
-  goto sostituisci
+  goto libero
 )
 timeout /t 1 /nobreak >nul
 goto attesa
 
-:sostituisci
+:libero
+rem Windows può tenere bloccato l'eseguibile ancora per qualche istante dopo la
+rem chiusura: si riprova più volte invece di arrendersi al primo tentativo.
+timeout /t 2 /nobreak >nul
+set /a PROVE=0
+
+:riprova
 if exist "%BACKUP%" del /f /q "%BACKUP%" >nul 2>&1
 move /y "%BERSAGLIO%" "%BACKUP%" >nul 2>&1
-move /y "%NUOVO%" "%BERSAGLIO%" >nul 2>&1
+if not exist "%BERSAGLIO%" goto metti_nuovo
+set /a PROVE+=1
+echo [%TIME%] file ancora bloccato (tentativo %PROVE%) >> "%LOG%"
+if %PROVE% LSS 25 (
+  timeout /t 1 /nobreak >nul
+  goto riprova
+)
+echo [%TIME%] RINUNCIA: impossibile sostituire, riavvio la versione attuale >> "%LOG%"
+goto riavvia
 
-rem se la sostituzione non è andata a buon fine, ripristina la versione precedente
+:metti_nuovo
+move /y "%NUOVO%" "%BERSAGLIO%" >nul 2>&1
 if not exist "%BERSAGLIO%" (
+  echo [%TIME%] copia nuova non riuscita: ripristino la precedente >> "%LOG%"
   move /y "%BACKUP%" "%BERSAGLIO%" >nul 2>&1
+) else (
+  echo [%TIME%] sostituzione completata >> "%LOG%"
 )
 
+:riavvia
 start "" "%BERSAGLIO%"
 timeout /t 3 /nobreak >nul
 del /f /q "%BACKUP%" >nul 2>&1

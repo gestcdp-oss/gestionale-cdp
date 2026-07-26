@@ -686,6 +686,19 @@ ipcMain.handle('db:applica-import', async (_ev, percorso) => {
 })
 
 // ---------- aggiornamenti ----------
+// Registro su file: serve a capire, anche a distanza, perché un computer non si
+// aggiorna (nessuna rete? release non trovata? download interrotto?).
+function registra(messaggio) {
+  try {
+    const riga = `${new Date().toISOString()}  ${messaggio}\n`
+    fs.mkdirSync(cartellaDati(), { recursive: true })
+    fs.appendFileSync(path.join(cartellaDati(), 'registro-aggiornamenti.txt'), riga)
+  } catch {
+    /* il registro non deve mai bloccare nulla */
+  }
+  console.log('[agg]', messaggio)
+}
+
 // Stato condiviso con l'interfaccia: fase, avanzamento, versione trovata.
 let statoAgg = {
   supportato: false,
@@ -710,17 +723,27 @@ function aggiornaStato(patch) {
 /** Controlla se esiste una versione più recente. Non installa nulla. */
 async function controllaAggiornamenti() {
   if (!agg.aggiornamentoSupportato()) {
+    registra('controllo saltato: non è la versione portable')
     aggiornaStato({ fase: 'inattivo', messaggio: 'Aggiornamento automatico attivo solo in versione portable.' })
     return null
   }
+  registra(`controllo avviato (versione installata ${app.getVersion()})`)
   aggiornaStato({ fase: 'controllo', messaggio: '', percentuale: 0 })
   try {
     const info = await agg.cercaAggiornamento(app.getVersion())
     if (!info) {
+      registra('controllo concluso: nessuna versione più recente')
       aggiornaStato({ fase: 'inattivo', disponibile: null, messaggio: '' })
       return null
     }
+    registra(`controllo concluso: trovata versione ${info.versione}`)
     ultimoAggiornamento = info
+    const precedenti = leggiTentativi()
+    const falliti = precedenti.versione === info.versione ? precedenti.tentativi : 0
+    info.autoInstalla = falliti < MAX_TENTATIVI
+    if (!info.autoInstalla) {
+      registra(`installazione automatica sospesa: ${falliti} tentativi falliti per la ${info.versione}`)
+    }
     aggiornaStato({
       fase: 'disponibile',
       disponibile: { versione: info.versione, note: info.note },
@@ -729,6 +752,7 @@ async function controllaAggiornamenti() {
     return info
   } catch (e) {
     // nessuna rete o GitHub irraggiungibile: si continua a lavorare normalmente
+    registra(`controllo fallito: ${String((e && e.message) || e)}`)
     aggiornaStato({ fase: 'errore', messaggio: String((e && e.message) || e) })
     return null
   }
@@ -737,13 +761,55 @@ async function controllaAggiornamenti() {
 /** @type {null | object} */
 let ultimoAggiornamento = null
 
+// Anti-ciclo: se l'installazione di una versione fallisce più volte, si smette di
+// riprovare da soli all'avvio (resta il banner, decide l'utente). Serve a non
+// restare mai intrappolati in un ciclo di riavvii.
+const MAX_TENTATIVI = 3
+const FILE_TENTATIVI = 'stato-aggiornamento.json'
+
+function leggiTentativi() {
+  try {
+    const dati = JSON.parse(fs.readFileSync(path.join(cartellaDati(), FILE_TENTATIVI), 'utf8'))
+    return { versione: String(dati.versione || ''), tentativi: Number(dati.tentativi) || 0 }
+  } catch {
+    return { versione: '', tentativi: 0 }
+  }
+}
+
+function segnaTentativo(versione) {
+  const attuale = leggiTentativi()
+  const tentativi = attuale.versione === versione ? attuale.tentativi + 1 : 1
+  try {
+    fs.writeFileSync(
+      path.join(cartellaDati(), FILE_TENTATIVI),
+      JSON.stringify({ versione, tentativi, ultimo: new Date().toISOString() }, null, 2),
+    )
+  } catch {
+    /* ignora */
+  }
+  registra(`tentativo di installazione n. ${tentativi} per la versione ${versione}`)
+  return tentativi
+}
+
+function azzeraTentativi() {
+  try {
+    fs.unlinkSync(path.join(cartellaDati(), FILE_TENTATIVI))
+  } catch {
+    /* non esiste: ok */
+  }
+}
+
 /** Scarica, verifica e installa l'aggiornamento (l'app si chiude e riparte). */
 async function installaAggiornamento() {
   if (!ultimoAggiornamento) throw new Error('Nessun aggiornamento da installare.')
+  segnaTentativo(ultimoAggiornamento.versione)
+  registra(`download avviato: versione ${ultimoAggiornamento.versione}`)
   aggiornaStato({ fase: 'download', percentuale: 0, messaggio: '' })
   const file = await agg.scaricaAggiornamento(ultimoAggiornamento, (p) => aggiornaStato({ percentuale: p }))
+  registra(`download completato e impronta verificata: ${file}`)
   aggiornaStato({ fase: 'installazione', percentuale: 100 })
   agg.avviaSostituzione(file)
+  registra('sostituzione avviata: il programma si chiude e riparte')
   // lascia il tempo all'interfaccia di mostrare il messaggio, poi esce
   setTimeout(() => {
     if (db) db.close()
@@ -751,7 +817,10 @@ async function installaAggiornamento() {
   }, 1200)
 }
 
-ipcMain.handle('agg:stato', () => ({ data: statoAgg, error: null }))
+ipcMain.handle('agg:stato', () => {
+  registra(`interfaccia: stato richiesto (supportato=${statoAgg.supportato}, fase=${statoAgg.fase})`)
+  return { data: statoAgg, error: null }
+})
 
 // Nota: l'handler DEVE attendere il risultato e restituire solo valori semplici.
 // (Restituire una Promise attraverso il canale la rende non trasferibile e la
@@ -759,17 +828,22 @@ ipcMain.handle('agg:stato', () => ({ data: statoAgg, error: null }))
 ipcMain.handle('agg:controlla', async () => {
   try {
     const info = await controllaAggiornamenti()
-    return { data: info ? { versione: info.versione, note: info.note } : null, error: null }
+    return {
+      data: info ? { versione: info.versione, note: info.note, autoInstalla: info.autoInstalla !== false } : null,
+      error: null,
+    }
   } catch (e) {
     return { data: null, error: { message: String((e && e.message) || e) } }
   }
 })
 ipcMain.handle('agg:installa', async () => {
+  registra('interfaccia: installazione richiesta')
   try {
     await installaAggiornamento()
     return { data: null, error: null }
   } catch (e) {
     const messaggio = String((e && e.message) || e)
+    registra(`installazione fallita: ${messaggio}`)
     aggiornaStato({ fase: 'errore', messaggio })
     return { data: null, error: { message: messaggio } }
   }
@@ -782,7 +856,7 @@ function creaFinestra() {
     height: 860,
     minWidth: 1000,
     minHeight: 640,
-    title: 'TR.A.V.I.',
+    title: 'TR.A.V.I. - Tracciamento Attività e Verifica Immobili',
     backgroundColor: '#E6F0F8',
     autoHideMenuBar: true,
     webPreferences: {
@@ -792,6 +866,21 @@ function creaFinestra() {
     },
   })
   Menu.setApplicationMenu(null)
+
+  // Diagnostica: tutto ciò che accade nella finestra finisce nel registro,
+  // così un problema dell'interfaccia non resta invisibile.
+  win.webContents.on('preload-error', (_e, percorso, errore) => {
+    registra(`ERRORE nel ponte (preload ${percorso}): ${errore && errore.message}`)
+  })
+  win.webContents.on('console-message', (_e, livello, messaggio, riga, sorgente) => {
+    if (livello >= 2) registra(`finestra [errore] ${messaggio} (${sorgente}:${riga})`)
+    else if (/\[TRAVI\]/.test(String(messaggio))) registra(`finestra ${messaggio}`)
+  })
+  win.webContents.on('did-finish-load', () => registra('finestra: interfaccia caricata'))
+  win.webContents.on('render-process-gone', (_e, dettagli) =>
+    registra(`finestra terminata: ${dettagli && dettagli.reason}`),
+  )
+
   void win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   return win
 }
@@ -1003,6 +1092,16 @@ app.whenReady().then(() => {
   }
   statoAgg.supportato = agg.aggiornamentoSupportato()
   statoAgg.versioneCorrente = app.getVersion()
+  // se questa versione è quella che stavamo installando, l'aggiornamento è riuscito
+  const inSospeso = leggiTentativi()
+  if (inSospeso.versione && agg.confrontaVersioni(app.getVersion(), inSospeso.versione) >= 0) {
+    registra(`aggiornamento alla ${inSospeso.versione} completato con successo`)
+    azzeraTentativi()
+  }
+  registra(
+    `avvio applicazione ${app.getVersion()} — aggiornamento ${statoAgg.supportato ? 'attivo' : 'non disponibile'} ` +
+      `(eseguibile: ${agg.eseguibilePortable() || 'non portable'})`,
+  )
   creaFinestra()
   // ricontrolla una volta all'ora, per accorgersi degli aggiornamenti
   // pubblicati mentre il programma è già aperto

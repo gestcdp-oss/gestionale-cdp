@@ -4,8 +4,8 @@
        riempie il riquadro e resta leggibile anche a 32 o 16 pixel. -->
   <defs>
     <linearGradient id="fondo" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FDFBF6"/>
-      <stop offset="1" stop-color="#ECE1CD"/>
+      <stop offset="0" stop-color="#FFF6DC"/>
+      <stop offset="1" stop-color="#F2DFAE"/>
     </linearGradient>
     <linearGradient id="legno" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#DFAE72"/>

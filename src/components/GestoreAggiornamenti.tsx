@@ -43,7 +43,10 @@ export default function GestoreAggiornamenti({ children }: { children: ReactNode
 
     async function avvio() {
       try {
+        console.log('[TRAVI] avvio: ponte ' + (window.travi ? 'presente' : 'ASSENTE') +
+          ', aggiornamenti ' + (window.travi?.aggiornamenti ? 'presenti' : 'ASSENTI'))
         const { data } = await dbLocale.aggiornamenti.stato()
+        console.log('[TRAVI] stato ricevuto: supportato=' + data?.supportato + ' versione=' + data?.versioneCorrente)
         if (data) setStato(data)
         if (!data?.supportato) return
 
@@ -53,8 +56,21 @@ export default function GestoreAggiornamenti({ children }: { children: ReactNode
         const esito = await Promise.race([controllo, scaduto])
         if (!vivo) return
 
-        const trovato = (esito as { data?: { versione?: string } | null } | null)?.data ?? null
+        const trovato =
+          (esito as { data?: { versione?: string; autoInstalla?: boolean } | null } | null)?.data ?? null
+        console.log('[TRAVI] controllo concluso: ' + (trovato?.versione ? 'versione ' + trovato.versione : 'niente di nuovo'))
         if (!trovato?.versione) return
+
+        // se i tentativi precedenti sono falliti, non si insiste da soli:
+        // resta il banner e decide l'utente (così non si entra in un ciclo)
+        if (trovato.autoInstalla === false) {
+          console.log('[TRAVI] installazione automatica sospesa dopo tentativi falliti')
+          setErroreAvvio(
+            `L'aggiornamento alla versione ${trovato.versione} non è andato a buon fine nei tentativi precedenti. ` +
+              'Puoi riprovare dal pulsante "Aggiorna subito".',
+          )
+          return
+        }
 
         // aggiornamento trovato: si installa subito (l'app si riavvia da sola)
         installazioneAvviata = true

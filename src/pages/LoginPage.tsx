@@ -15,7 +15,7 @@ export default function LoginPage() {
           <img src={LOGO} alt="TR.A.V.I." className="mx-auto h-20 w-20" />
           <h1 className="mt-3 text-2xl font-bold tracking-tight text-cielo-800">TR.A.V.I.</h1>
           <p className="mt-1 text-[11px] uppercase tracking-wide text-cielo-400">
-            Tracciamento Attività Verifica Immobili
+            Tracciamento Attività e Verifica Immobili
           </p>
         </div>
         {serveSetup ? <FormPrimoAvvio /> : <FormAccesso />}
