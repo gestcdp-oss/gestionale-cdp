@@ -5,6 +5,7 @@ import { dbLocale } from './lib/db'
 import PrimoAvvioPage from './pages/PrimoAvvioPage'
 import { PreferenzeProvider } from './hooks/usePreferenze'
 import { SelezioneProvider } from './hooks/useSelezione'
+import { ImmobiliProvider } from './hooks/useImmobili'
 import Layout from './components/Layout'
 import GestoreAggiornamenti from './components/GestoreAggiornamenti'
 import LoginPage from './pages/LoginPage'
@@ -50,16 +51,18 @@ function Contenuto() {
   if (chiediCollegamenti) return <PrimoAvvioPage onFine={() => setChiediCollegamenti(false)} />
 
   return (
-    <HashRouter>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/immobili" element={<ImmobiliPage />} />
-          <Route path="/immobile" element={<SchedaImmobilePage />} />
-          <Route path="/utenti" element={<UtentiPage />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </HashRouter>
+    <ImmobiliProvider>
+      <HashRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/immobili" element={<ImmobiliPage />} />
+            <Route path="/immobile" element={<SchedaImmobilePage />} />
+            <Route path="/utenti" element={<UtentiPage />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </HashRouter>
+    </ImmobiliProvider>
   )
 }

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
 import { dbLocale } from '../lib/db'
 import { useSelezione } from '../hooks/useSelezione'
+import { useImmobili } from '../hooks/useImmobili'
 import { usePreferenze } from '../hooks/usePreferenze'
 import type { Immobile } from '../lib/tipi'
 
@@ -20,12 +21,12 @@ export default function ImmobiliPage() {
   // quanti immobili per pagina: scelta ricordata nelle preferenze dell'utente
   const { perPagina, impostaPerPagina, modoMappa, impostaModoMappa } = usePreferenze()
 
+  // elenco condiviso: le modifiche fatte qui si vedono subito anche altrove
+  const { immobili, caricamento, inserisci, aggiorna, elimina } = useImmobili()
   const [form, setForm] = useState<Campi>(VUOTO)
-  const [immobili, setImmobili] = useState<Immobile[]>([])
   const [ordine, setOrdine] = useState<Ordine>({ campo: 'asset', dir: 'asc' })
   const [ricerca, setRicerca] = useState('')
   const [pagina, setPagina] = useState(1)
-  const [caricamento, setCaricamento] = useState(true)
   const [salvataggio, setSalvataggio] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
@@ -44,18 +45,6 @@ export default function ImmobiliPage() {
 
   // mappa: se non c'è ancora una preferenza, la chiediamo al primo utilizzo
   const [mappaDaAprire, setMappaDaAprire] = useState<string | null>(null)
-
-  // Dati estratti UNA sola volta; ricerca/ordinamento/paginazione sono locali.
-  async function carica() {
-    setCaricamento(true)
-    const { data, error } = await dbLocale.immobili.list()
-    if (!error && data) setImmobili(data)
-    setCaricamento(false)
-  }
-
-  useEffect(() => {
-    void carica()
-  }, [])
 
   // torna a pagina 1 quando cambia la ricerca o gli elementi per pagina
   useEffect(() => {
@@ -151,20 +140,19 @@ export default function ImmobiliPage() {
       return
     }
     setSalvataggio(true)
-    const { error } = await dbLocale.immobili.insert({
+    const esito = await inserisci({
       asset: form.asset.trim(),
       denominazione: form.denominazione.trim(),
       portafoglio: form.portafoglio.trim() || null,
       localizzazione: form.localizzazione.trim() || null,
     })
     setSalvataggio(false)
-    if (error) {
-      setErrore(msgErrore(error))
+    if (!esito.ok) {
+      setErrore(msgErrore({ code: esito.codice, message: esito.messaggio ?? '' }))
       return
     }
     setOk(`Immobile "${form.denominazione.trim()}" salvato.`)
     setForm(VUOTO)
-    void carica()
   }
 
   // ---- modifica ----
@@ -197,15 +185,15 @@ export default function ImmobiliPage() {
       return
     }
     setSalvataggioMod(true)
-    const { error } = await dbLocale.immobili.update(editId, {
+    const esito = await aggiorna(editId, {
       asset: editForm.asset.trim(),
       denominazione: editForm.denominazione.trim(),
       portafoglio: editForm.portafoglio.trim() || null,
       localizzazione: editForm.localizzazione.trim() || null,
     })
     setSalvataggioMod(false)
-    if (error) {
-      setEditErrore(msgErrore(error))
+    if (!esito.ok) {
+      setEditErrore(msgErrore({ code: esito.codice, message: esito.messaggio ?? '' }))
       return
     }
     // se stavo modificando l'immobile selezionato, aggiorno l'etichetta in header
@@ -213,7 +201,6 @@ export default function ImmobiliPage() {
       seleziona({ id: editId, asset: editForm.asset.trim(), denominazione: editForm.denominazione.trim() })
     }
     setEditId(null)
-    void carica()
   }
 
   // ---- eliminazione ----
@@ -221,15 +208,14 @@ export default function ImmobiliPage() {
     if (!eliminaTarget) return
     setEliminaErrore(null)
     setEliminando(true)
-    const { error } = await dbLocale.immobili.remove(eliminaTarget.id)
+    const esito = await elimina(eliminaTarget.id)
     setEliminando(false)
-    if (error) {
-      setEliminaErrore(`Errore nell'eliminazione: ${error.message}`)
+    if (!esito.ok) {
+      setEliminaErrore(`Errore nell'eliminazione: ${esito.messaggio}`)
       return
     }
     if (selezionato && selezionato.id === eliminaTarget.id) seleziona(null)
     setEliminaTarget(null)
-    void carica()
   }
 
   return (

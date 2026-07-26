@@ -1,6 +1,9 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { usePreferenze } from '../hooks/usePreferenze'
+import { usePreferenze, MENU_MIN, MENU_MAX } from '../hooks/usePreferenze'
+import Icona from './Icone'
+import type { NomeIcona } from './Icone'
 import { useSelezione } from '../hooks/useSelezione'
 import { useAggiornamenti } from './GestoreAggiornamenti'
 import { TEMI } from '../lib/temi'
@@ -11,8 +14,45 @@ const LOGO = './logo.svg'
 export default function Layout() {
   const { utente, esci } = useAuth()
   const { immobile, seleziona } = useSelezione()
-  const { tema, impostaTema } = usePreferenze()
+  const { tema, impostaTema, larghezzaMenu, impostaLarghezzaMenu } = usePreferenze()
   const { controlloManuale, controllaOra } = useAggiornamenti()
+
+  // larghezza del menu: si trascina il bordo destro
+  const [larghezza, setLarghezza] = useState(larghezzaMenu)
+  const trascinamento = useRef(false)
+
+  useEffect(() => setLarghezza(larghezzaMenu), [larghezzaMenu])
+
+  const muovi = useCallback((e: MouseEvent) => {
+    if (!trascinamento.current) return
+    setLarghezza(Math.min(MENU_MAX, Math.max(MENU_MIN, e.clientX)))
+  }, [])
+
+  const rilascia = useCallback(() => {
+    if (!trascinamento.current) return
+    trascinamento.current = false
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    setLarghezza((l) => {
+      impostaLarghezzaMenu(l) // la misura scelta viene ricordata
+      return l
+    })
+  }, [impostaLarghezzaMenu])
+
+  useEffect(() => {
+    window.addEventListener('mousemove', muovi)
+    window.addEventListener('mouseup', rilascia)
+    return () => {
+      window.removeEventListener('mousemove', muovi)
+      window.removeEventListener('mouseup', rilascia)
+    }
+  }, [muovi, rilascia])
+
+  function iniziaTrascinamento() {
+    trascinamento.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
 
   return (
     // Layout a schermo fisso: header e menù restano sempre visibili,
@@ -107,9 +147,12 @@ export default function Layout() {
 
       {/* CORPO: menù + contenuto */}
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-56 shrink-0 overflow-y-auto border-r border-cielo-200 bg-sidebar p-3">
+        <aside
+          style={{ width: larghezza }}
+          className="shrink-0 overflow-y-auto border-r border-cielo-200 bg-sidebar p-3"
+        >
           <Gruppo titolo="Anagrafiche" />
-          <VoceMenu to="/immobili" label="Inserisci/Seleziona Immobile" />
+          <VoceMenu to="/immobili" label="Inserisci/Seleziona Immobile" icona="immobili" />
 
           {immobile ? (
             <>
@@ -125,7 +168,7 @@ export default function Layout() {
                     </p>
                   )}
                   {gruppo.voci.map((v) => (
-                    <VoceMenu key={v.id} to={v.percorso} label={v.etichetta} />
+                    <VoceMenu key={v.id} to={v.percorso} label={v.etichetta} icona={v.icona} />
                   ))}
                 </div>
               ))}
@@ -136,6 +179,16 @@ export default function Layout() {
             </p>
           )}
         </aside>
+
+        {/* bordo trascinabile per allargare o stringere il menu */}
+        <div
+          onMouseDown={iniziaTrascinamento}
+          onDoubleClick={() => impostaLarghezzaMenu(224)}
+          title="Trascina per cambiare la larghezza del menu (doppio clic per la misura standard)"
+          className="group w-1.5 shrink-0 cursor-col-resize bg-cielo-200 transition hover:bg-cielo-400"
+        >
+          <div className="mx-auto mt-[45vh] h-8 w-0.5 rounded bg-cielo-400 transition group-hover:bg-cielo-600" />
+        </div>
 
         {/* id="contenuto": è questo il riquadro che scorre (vedi scorriInCima) */}
         <main id="contenuto" className="min-w-0 flex-1 overflow-y-auto p-6">
@@ -154,12 +207,16 @@ function Gruppo({ titolo }: { titolo: string }) {
   )
 }
 
-function VoceMenu({ to, label }: { to?: string; label: string }) {
+function VoceMenu({ to, label, icona }: { to?: string; label: string; icona: NomeIcona }) {
   if (!to) {
     return (
-      <div className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-cielo-400">
-        <span>{label}</span>
-        <span className="rounded-full bg-cielo-100 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide">
+      <div
+        title={`${label} — in preparazione`}
+        className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-cielo-400"
+      >
+        <Icona nome={icona} />
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <span className="shrink-0 rounded-full bg-cielo-100 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide">
           presto
         </span>
       </div>
@@ -168,13 +225,15 @@ function VoceMenu({ to, label }: { to?: string; label: string }) {
   return (
     <NavLink
       to={to}
+      title={label}
       className={({ isActive }) =>
-        `block rounded-lg px-3 py-2 text-sm font-medium transition ${
+        `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
           isActive ? 'bg-cielo-200 text-cielo-800' : 'text-cielo-700 hover:bg-cielo-50'
         }`
       }
     >
-      {label}
+      <Icona nome={icona} />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
     </NavLink>
   )
 }

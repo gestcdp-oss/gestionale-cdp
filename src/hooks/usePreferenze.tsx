@@ -8,9 +8,15 @@ const PER_PAGINA_AMMESSI = [10, 20, 30, 40, 50]
 
 export type ModoMappa = 'finestra' | 'browser'
 
+export const MENU_MIN = 170
+export const MENU_MAX = 420
+
 type PrefState = {
   tema: string
   perPagina: number
+  /** larghezza della barra del menu, regolabile trascinandone il bordo */
+  larghezzaMenu: number
+  impostaLarghezzaMenu: (n: number) => void
   /** null = nessuna preferenza: al primo uso l'app chiede dove aprire la mappa */
   modoMappa: ModoMappa | null
   impostaTema: (id: string) => void
@@ -25,6 +31,7 @@ export function PreferenzeProvider({ children }: { children: ReactNode }) {
   const [tema, setTema] = useState<string>(() => temaSalvato())
   const [perPagina, setPerPagina] = useState(10)
   const [modoMappa, setModoMappa] = useState<ModoMappa | null>(null)
+  const [larghezzaMenu, setLarghezzaMenu] = useState(224)
 
   // applica subito il tema ricordato su questo computer
   useEffect(() => {
@@ -41,6 +48,8 @@ export function PreferenzeProvider({ children }: { children: ReactNode }) {
       const n = Number(data.per_pagina)
       if (PER_PAGINA_AMMESSI.includes(n)) setPerPagina(n)
       setModoMappa(data.mappa_modo === 'browser' || data.mappa_modo === 'finestra' ? data.mappa_modo : null)
+      const l = Number(data.larghezza_menu)
+      if (l >= MENU_MIN && l <= MENU_MAX) setLarghezzaMenu(l)
     })
     return () => {
       vivo = false
@@ -59,6 +68,12 @@ export function PreferenzeProvider({ children }: { children: ReactNode }) {
     if (utente) void dbLocale.preferenze.imposta('per_pagina', String(n))
   }
 
+  function impostaLarghezzaMenu(n: number) {
+    const larghezza = Math.min(MENU_MAX, Math.max(MENU_MIN, Math.round(n)))
+    setLarghezzaMenu(larghezza)
+    if (utente) void dbLocale.preferenze.imposta('larghezza_menu', String(larghezza))
+  }
+
   function impostaModoMappa(m: ModoMappa | null) {
     setModoMappa(m)
     if (utente) void dbLocale.preferenze.imposta('mappa_modo', m)
@@ -66,7 +81,16 @@ export function PreferenzeProvider({ children }: { children: ReactNode }) {
 
   return (
     <PrefCtx.Provider
-      value={{ tema, perPagina, modoMappa, impostaTema, impostaPerPagina, impostaModoMappa }}
+      value={{
+        tema,
+        perPagina,
+        modoMappa,
+        larghezzaMenu,
+        impostaTema,
+        impostaPerPagina,
+        impostaModoMappa,
+        impostaLarghezzaMenu,
+      }}
     >
       {children}
     </PrefCtx.Provider>

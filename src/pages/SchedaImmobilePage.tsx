@@ -2,33 +2,30 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { dbLocale } from '../lib/db'
-import type { Immobile } from '../lib/tipi'
 import { useSelezione } from '../hooks/useSelezione'
+import { useImmobili } from '../hooks/useImmobili'
 import { usePreferenze } from '../hooks/usePreferenze'
 import { GRUPPI_IMMOBILE } from '../lib/menu'
+import Icona from '../components/Icone'
+import type { NomeIcona } from '../components/Icone'
 
 type Vista = 'mappa' | 'streetview'
 
+const VUOTO = { asset: '', denominazione: '', portafoglio: '', localizzazione: '' }
+
 export default function SchedaImmobilePage() {
-  const { immobile } = useSelezione()
+  const { immobile, seleziona } = useSelezione()
+  const { immobili, aggiorna } = useImmobili()
   const { modoMappa } = usePreferenze()
-  const [dati, setDati] = useState<Immobile | null>(null)
+  // i dati arrivano dalla fonte condivisa: ogni modifica si riflette ovunque
+  const dati = immobili.find((i) => i.id === immobile?.id) ?? null
+  const [modifica, setModifica] = useState(false)
+  const [form, setForm] = useState(VUOTO)
+  const [errore, setErrore] = useState<string | null>(null)
+  const [salvataggio, setSalvataggio] = useState(false)
   // si parte da Street View; dove non c'è copertura Google mostra la mappa
   const [vista, setVista] = useState<Vista>('streetview')
   const [urlAnteprima, setUrlAnteprima] = useState<string | null>(null)
-
-  // rileggo i dati completi dell'immobile selezionato
-  useEffect(() => {
-    if (!immobile) return
-    let vivo = true
-    void dbLocale.immobili.list().then(({ data }) => {
-      if (!vivo || !data) return
-      setDati(data.find((i) => i.id === immobile.id) ?? null)
-    })
-    return () => {
-      vivo = false
-    }
-  }, [immobile])
 
   const localizzazione = dati?.localizzazione?.trim() || ''
 
@@ -53,6 +50,47 @@ export default function SchedaImmobilePage() {
     void dbLocale.mappa.apri(localizzazione, modoMappa ?? 'finestra')
   }
 
+  function avviaModifica() {
+    if (!dati) return
+    setErrore(null)
+    setForm({
+      asset: dati.asset,
+      denominazione: dati.denominazione,
+      portafoglio: dati.portafoglio ?? '',
+      localizzazione: dati.localizzazione ?? '',
+    })
+    setModifica(true)
+  }
+
+  async function salva() {
+    if (!dati) return
+    setErrore(null)
+    if (!form.asset.trim() || !form.denominazione.trim()) {
+      setErrore('Asset e Denominazione sono obbligatori.')
+      return
+    }
+    setSalvataggio(true)
+    const campi = {
+      asset: form.asset.trim(),
+      denominazione: form.denominazione.trim(),
+      portafoglio: form.portafoglio.trim() || null,
+      localizzazione: form.localizzazione.trim() || null,
+    }
+    const esito = await aggiorna(dati.id, campi)
+    setSalvataggio(false)
+    if (!esito.ok) {
+      setErrore(
+        esito.codice === '23505'
+          ? 'Esiste già un altro immobile con questo Asset o questa Denominazione.'
+          : (esito.messaggio ?? 'Salvataggio non riuscito.'),
+      )
+      return
+    }
+    // l'etichetta in alto segue il nuovo nome
+    seleziona({ id: dati.id, asset: campi.asset, denominazione: campi.denominazione })
+    setModifica(false)
+  }
+
   return (
     <div className="space-y-6">
       {/* ---------- parte superiore: riepilogo ---------- */}
@@ -64,15 +102,69 @@ export default function SchedaImmobilePage() {
           <span className="rounded-full border border-cielo-300 bg-panna px-2.5 py-1 font-mono text-xs text-cielo-700">
             Asset {dati?.asset ?? immobile.asset}
           </span>
+          <span className="ml-auto flex gap-2">
+            {modifica ? (
+              <>
+                <button
+                  onClick={() => setModifica(false)}
+                  disabled={salvataggio}
+                  className="rounded-lg px-3 py-1.5 text-sm text-cielo-600 transition hover:bg-cielo-100"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={() => void salva()}
+                  disabled={salvataggio}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {salvataggio ? 'Salvataggio…' : 'Salva'}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={avviaModifica}
+                title="Modifica i dati dell'immobile"
+                className="flex items-center gap-1.5 rounded-lg border border-cielo-300 bg-panna px-3 py-1.5 text-sm text-cielo-700 transition hover:bg-cielo-100"
+              >
+                <IconaMatita />
+                Modifica
+              </button>
+            )}
+          </span>
         </div>
+
+        {errore && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{errore}</p>}
 
         <div className="mt-5 grid gap-6 lg:grid-cols-[1fr_360px]">
           {/* dati */}
           <dl className="grid gap-4 sm:grid-cols-2">
-            <Dato etichetta="Asset" valore={dati?.asset ?? immobile.asset} mono />
-            <Dato etichetta="Portafoglio" valore={dati?.portafoglio ?? ''} />
-            <Dato etichetta="Denominazione" valore={dati?.denominazione ?? immobile.denominazione} />
-            <Dato etichetta="Localizzazione" valore={localizzazione} />
+            {modifica ? (
+              <>
+                <Campo etichetta="Asset *" valore={form.asset} onCambia={(v) => setForm({ ...form, asset: v })} mono />
+                <Campo
+                  etichetta="Portafoglio"
+                  valore={form.portafoglio}
+                  onCambia={(v) => setForm({ ...form, portafoglio: v })}
+                />
+                <Campo
+                  etichetta="Denominazione *"
+                  valore={form.denominazione}
+                  onCambia={(v) => setForm({ ...form, denominazione: v })}
+                />
+                <Campo
+                  etichetta="Localizzazione"
+                  valore={form.localizzazione}
+                  onCambia={(v) => setForm({ ...form, localizzazione: v })}
+                />
+              </>
+            ) : (
+              <>
+                <Dato etichetta="Asset" valore={dati?.asset ?? immobile.asset} mono />
+                <Dato etichetta="Portafoglio" valore={dati?.portafoglio ?? ''} />
+                <Dato etichetta="Denominazione" valore={dati?.denominazione ?? immobile.denominazione} />
+                <Dato etichetta="Localizzazione" valore={localizzazione} />
+              </>
+            )}
           </dl>
 
           {/* anteprima cartografica */}
@@ -130,13 +222,47 @@ export default function SchedaImmobilePage() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">{gruppo.titolo}</h2>
             <div className="mt-3 flex flex-wrap gap-4">
               {voci.map((v) => (
-                <Riquadro key={v.id} to={v.percorso} titolo={v.etichetta} desc={v.descrizione} />
+                <Riquadro key={v.id} to={v.percorso} titolo={v.etichetta} desc={v.descrizione} icona={v.icona} />
               ))}
             </div>
           </section>
         )
       })}
     </div>
+  )
+}
+
+function Campo({
+  etichetta,
+  valore,
+  onCambia,
+  mono,
+}: {
+  etichetta: string
+  valore: string
+  onCambia: (v: string) => void
+  mono?: boolean
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-semibold uppercase tracking-wide text-cielo-500">{etichetta}</span>
+      <input
+        value={valore}
+        onChange={(e) => onCambia(e.target.value)}
+        className={`mt-1 w-full rounded-lg border border-cielo-300 bg-white px-3 py-1.5 text-sm text-cielo-800 outline-none transition focus:border-cielo-400 focus:ring-2 focus:ring-cielo-100 ${
+          mono ? 'font-mono' : ''
+        }`}
+      />
+    </label>
+  )
+}
+
+function IconaMatita() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
   )
 }
 
@@ -171,11 +297,24 @@ function BottoneVista({
 }
 
 /** Riquadro di una sezione: stessa dimensione per tutti, va a capo da solo. */
-function Riquadro({ to, titolo, desc }: { to?: string; titolo: string; desc?: string }) {
+function Riquadro({
+  to,
+  titolo,
+  desc,
+  icona,
+}: {
+  to?: string
+  titolo: string
+  desc?: string
+  icona: NomeIcona
+}) {
   const contenuto = (
     <>
       <span className="flex items-start justify-between gap-2">
-        <span className="font-semibold text-cielo-800">{titolo}</span>
+        <span className="flex items-center gap-2 font-semibold text-cielo-800">
+          <Icona nome={icona} size={18} />
+          {titolo}
+        </span>
         {!to && (
           <span className="shrink-0 rounded-full bg-cielo-100 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-cielo-500">
             presto
