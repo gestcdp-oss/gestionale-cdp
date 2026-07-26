@@ -701,6 +701,93 @@ ipcMain.handle('db:applica-import', async (_ev, percorso) => {
   }
 })
 
+// ---------- prima sistemazione sul computer ----------
+// Se il programma viene avviato dalla cartella dei download (o da una chiavetta),
+// si sistema da solo in una cartella stabile, crea i collegamenti e riparte da lì.
+// Serve a evitare che i dati finiscano fra i download e vengano persi.
+
+function cartellaCasa() {
+  const base = process.env.LOCALAPPDATA || app.getPath('appData')
+  return path.join(base, 'TRAVI')
+}
+
+/** true se l'eseguibile è già nella sua cartella definitiva. */
+function giaSistemato() {
+  const exe = process.env.PORTABLE_EXECUTABLE_FILE
+  if (!exe) return true // in sviluppo o versione a cartella: non si tocca nulla
+  return path.dirname(exe).toLowerCase() === cartellaCasa().toLowerCase()
+}
+
+ipcMain.handle('sistemazione:stato', () => {
+  const exe = process.env.PORTABLE_EXECUTABLE_FILE
+  return {
+    data: {
+      serve: Boolean(exe) && !giaSistemato() && !db.prepare("select v from app_meta where k = 'no_sistemazione'").get(),
+      posizioneAttuale: exe ? path.dirname(exe) : '',
+      destinazione: cartellaCasa(),
+    },
+    error: null,
+  }
+})
+
+// L'utente preferisce usarlo dov'è: non lo chiediamo più.
+ipcMain.handle('sistemazione:rifiuta', () =>
+  rispondi(() => {
+    db.prepare("insert or replace into app_meta (k, v) values ('no_sistemazione', 'si')").run()
+    return null
+  }),
+)
+
+/** Copia il programma nella cartella definitiva, crea i collegamenti e riparte. */
+function eseguiSistemazione({ collegamentoDesktop, collegamentoMenu }) {
+  {
+    const origine = process.env.PORTABLE_EXECUTABLE_FILE
+    if (!origine) throw new Error('Operazione disponibile solo nella versione portable.')
+    const destinazioneCartella = cartellaCasa()
+    const destinazioneExe = path.join(destinazioneCartella, 'TRAVI.exe')
+
+    fs.mkdirSync(destinazioneCartella, { recursive: true })
+    fs.copyFileSync(origine, destinazioneExe)
+    registra(`programma copiato in ${destinazioneExe}`)
+
+    // se erano già stati inseriti dati nella posizione precedente, li portiamo con noi
+    const datiOrigine = path.join(path.dirname(origine), 'dati')
+    const datiDestinazione = path.join(destinazioneCartella, 'dati')
+    if (fs.existsSync(datiOrigine) && !fs.existsSync(datiDestinazione)) {
+      try {
+        if (db) db.close()
+        db = null
+        fs.cpSync(datiOrigine, datiDestinazione, { recursive: true })
+        registra('dati esistenti trasferiti nella nuova posizione')
+      } catch (e) {
+        registra(`trasferimento dati non riuscito: ${String((e && e.message) || e)}`)
+      }
+    }
+
+    const p = percorsiCollegamenti()
+    if (collegamentoDesktop) creaCollegamento(p.desktop, destinazioneExe)
+    if (collegamentoMenu) creaCollegamento(p.menuAvvio, destinazioneExe)
+
+    // avvia la copia sistemata e chiude questa
+    try {
+      app.releaseSingleInstanceLock()
+    } catch {
+      /* ignora */
+    }
+    const { spawn } = require('node:child_process')
+    const nuovo = spawn(destinazioneExe, ['--dopo-aggiornamento'], {
+      detached: true,
+      stdio: 'ignore',
+      cwd: destinazioneCartella,
+    })
+    nuovo.unref()
+    setTimeout(() => app.exit(0), 800)
+    return { destinazione: destinazioneCartella }
+  }
+}
+
+ipcMain.handle('sistemazione:esegui', (_ev, scelte) => rispondi(() => eseguiSistemazione(scelte)))
+
 // ---------- collegamenti (desktop / menu Start) ----------
 // Nota: la barra delle applicazioni non è accessibile ai programmi da Windows 10
 // in poi (Microsoft l'ha chiusa): si può solo spiegare come fissare l'icona.
@@ -717,8 +804,8 @@ function percorsiCollegamenti() {
   }
 }
 
-function creaCollegamento(destinazione) {
-  const bersaglio = percorsoEseguibile()
+function creaCollegamento(destinazione, bersaglioScelto) {
+  const bersaglio = bersaglioScelto || percorsoEseguibile()
   fs.mkdirSync(path.dirname(destinazione), { recursive: true })
   const icona = path.join(path.dirname(bersaglio), 'TRAVI.ico')
   const ok = shell.writeShortcutLink(destinazione, 'create', {
@@ -1279,6 +1366,18 @@ app.whenReady().then(() => {
     app.exit(1)
     return
   }
+  // sistemazione senza interfaccia (collaudo e riparazione): TRAVI.exe --sistema-ora
+  if (process.argv.includes('--sistema-ora')) {
+    try {
+      const esito = eseguiSistemazione({ collegamentoDesktop: true, collegamentoMenu: true })
+      console.log('[SISTEMAZIONE] completata in', esito.destinazione)
+    } catch (e) {
+      console.log('[SISTEMAZIONE] errore:', String((e && e.message) || e))
+      app.exit(1)
+    }
+    return
+  }
+
   statoAgg.supportato = agg.aggiornamentoSupportato()
   statoAgg.versioneCorrente = app.getVersion()
   agg.ripulisciVecchioEseguibile() // rimuove la copia lasciata dall'aggiornamento

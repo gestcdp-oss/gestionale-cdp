@@ -65,6 +65,14 @@ type ApiTravi = {
     verificaImport(): Promise<RispostaDb<AnteprimaImport | null>>
     applicaImport(percorso: string): Promise<RispostaDb<{ copiaSicurezza: string; immobili: number }>>
   }
+  sistemazione: {
+    stato(): Promise<RispostaDb<{ serve: boolean; posizioneAttuale: string; destinazione: string }>>
+    esegui(scelte: {
+      collegamentoDesktop: boolean
+      collegamentoMenu: boolean
+    }): Promise<RispostaDb<{ destinazione: string }>>
+    rifiuta(): Promise<RispostaDb<null>>
+  }
   collegamenti: {
     stato(): Promise<RispostaDb<StatoCollegamenti>>
     crea(scelte: { desktop: boolean; menuAvvio: boolean }): Promise<RispostaDb<{ fatti: string[] }>>
@@ -132,6 +140,14 @@ const stub: ApiTravi = {
   immobili: { list: async () => ({ data: [], error: ERRORE_AMBIENTE }), insert: ko, update: ko, remove: ko },
   mappa: { apri: ko, anteprima: ko },
   database: { esporta: ko, verificaImport: ko, applicaImport: ko },
+  sistemazione: {
+    stato: async () => ({
+      data: { serve: false, posizioneAttuale: '', destinazione: '' },
+      error: ERRORE_AMBIENTE,
+    }),
+    esegui: ko,
+    rifiuta: ko,
+  },
   collegamenti: {
     stato: async () => ({ data: { desktop: false, menuAvvio: false, giaChiesto: true }, error: ERRORE_AMBIENTE }),
     crea: ko,

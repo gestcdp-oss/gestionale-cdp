@@ -35,6 +35,11 @@ contextBridge.exposeInMainWorld('travi', {
     verificaImport: () => ipcRenderer.invoke('db:verifica-import'),
     applicaImport: (percorso) => ipcRenderer.invoke('db:applica-import', percorso),
   },
+  sistemazione: {
+    stato: () => ipcRenderer.invoke('sistemazione:stato'),
+    esegui: (scelte) => ipcRenderer.invoke('sistemazione:esegui', scelte),
+    rifiuta: () => ipcRenderer.invoke('sistemazione:rifiuta'),
+  },
   collegamenti: {
     stato: () => ipcRenderer.invoke('collegamenti:stato'),
     crea: (scelte) => ipcRenderer.invoke('collegamenti:crea', scelte),
