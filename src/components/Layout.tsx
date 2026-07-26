@@ -4,22 +4,9 @@ import { usePreferenze } from '../hooks/usePreferenze'
 import { useSelezione } from '../hooks/useSelezione'
 import { useAggiornamenti } from './GestoreAggiornamenti'
 import { TEMI } from '../lib/temi'
+import { GRUPPI_IMMOBILE } from '../lib/menu'
 
 const LOGO = './logo.svg'
-
-// Piani di attività: compaiono SOLO quando è selezionato un immobile.
-const ATTIVITA = [
-  'Building Manager',
-  'Due Diligence',
-  'Lavori',
-  'Prof SIA',
-  'Verde',
-  'Prof SIA Ambiente',
-  'Lavori Ambiente',
-  'Resp. Amianto',
-  'Vigilanze',
-  'DUVRI',
-]
 
 export default function Layout() {
   const { utente, esci } = useAuth()
@@ -122,19 +109,26 @@ export default function Layout() {
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-56 shrink-0 overflow-y-auto border-r border-cielo-200 bg-sidebar p-3">
           <Gruppo titolo="Anagrafiche" />
-          <VoceMenu to="/immobili" label="Immobili" />
+          <VoceMenu to="/immobili" label="Inserisci/Seleziona Immobile" />
 
           {immobile ? (
             <>
-              <Gruppo titolo="Attività dell'immobile" />
-              <p className="truncate px-3 pb-2 text-xs font-semibold text-cielo-700" title={immobile.denominazione}>
-                {immobile.asset} · {immobile.denominazione}
-              </p>
-              {ATTIVITA.map((a) => (
-                <VoceMenu key={a} label={a} />
+              {GRUPPI_IMMOBILE.map((gruppo, i) => (
+                <div key={gruppo.titolo}>
+                  <Gruppo titolo={gruppo.titolo} />
+                  {i === 0 && (
+                    <p
+                      className="truncate px-3 pb-2 text-xs font-semibold text-cielo-700"
+                      title={immobile.denominazione}
+                    >
+                      {immobile.asset} · {immobile.denominazione}
+                    </p>
+                  )}
+                  {gruppo.voci.map((v) => (
+                    <VoceMenu key={v.id} to={v.percorso} label={v.etichetta} />
+                  ))}
+                </div>
               ))}
-              <Gruppo titolo="Output" />
-              <VoceMenu label="Report e certificati" />
             </>
           ) : (
             <p className="mt-6 rounded-lg bg-cielo-50 px-3 py-3 text-xs leading-relaxed text-cielo-600">

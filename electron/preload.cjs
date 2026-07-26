@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('travi', {
   },
   mappa: {
     apri: (query, modo) => ipcRenderer.invoke('mappa:apri', { query, modo }),
+    anteprima: (query, tipo) => ipcRenderer.invoke('mappa:anteprima', { query, tipo }),
   },
   database: {
     esporta: () => ipcRenderer.invoke('db:esporta'),

@@ -533,6 +533,28 @@ function apriFinestraMappa(query) {
   void caricaMappa(finestraMappa, query)
 }
 
+/**
+ * Indirizzo per l'anteprima nella Scheda Immobile.
+ * "streetview" usa il parametro classico layer=c: funziona dove c'è copertura,
+ * altrimenti Google mostra un proprio avviso (per una resa garantita servirebbe
+ * una chiave Google a pagamento).
+ */
+function urlAnteprima(query, tipo) {
+  const q = String(query || '').trim()
+  if (!q) throw new Error('Localizzazione non indicata.')
+  if (tipo !== 'streetview') return urlMappa(q, 'finestra')
+  const punto = sonoCoordinate(q) ? q.replace(/;/, ',').replace(/\s+/g, '') : q
+  const cb = sonoCoordinate(q) ? `&cbll=${encodeURIComponent(punto)}` : ''
+  return `https://maps.google.com/maps?q=${encodeURIComponent(punto)}&layer=c${cb}&cbp=11,0,0,0,0&hl=it&output=embed`
+}
+
+ipcMain.handle('mappa:anteprima', (_ev, { query, tipo }) =>
+  rispondi(() => {
+    richiediSessione()
+    return urlAnteprima(query, tipo)
+  }),
+)
+
 ipcMain.handle('mappa:apri', (_ev, { query, modo }) =>
   rispondi(() => {
     richiediSessione()
@@ -878,11 +900,44 @@ async function installaAggiornamento() {
   const file = await agg.scaricaAggiornamento(ultimoAggiornamento, (p) => aggiornaStato({ percentuale: p }))
   registra(`download completato e impronta verificata: ${file}`)
   aggiornaStato({ fase: 'installazione', percentuale: 100 })
-  agg.avviaSostituzione(file)
-  registra('sostituzione avviata: il programma si chiude e riparte')
-  // lascia il tempo all'interfaccia di mostrare il messaggio, poi esce
+
+  // Sostituzione diretta: nessuno script esterno, nessuna finestra, nessun
+  // permesso aggiuntivo. Se non fosse possibile, si ripiega sullo script.
+  let conScript = false
+  try {
+    agg.sostituisciSenzaScript(file)
+    registra('eseguibile sostituito direttamente')
+  } catch (e) {
+    registra(`sostituzione diretta non riuscita (${String((e && e.message) || e)}): uso lo script di riserva`)
+    agg.avviaSostituzione(file)
+    conScript = true
+  }
+
   setTimeout(() => {
     if (db) db.close()
+    if (!conScript) {
+      // riavvio del programma appena aggiornato: prima si libera il posto,
+      // poi si lancia la nuova copia con un contrassegno che le dice di
+      // attendere qualche istante se trova ancora l'istanza precedente.
+      try {
+        app.releaseSingleInstanceLock()
+      } catch {
+        /* ignora */
+      }
+      try {
+        const { spawn } = require('node:child_process')
+        const exe = agg.eseguibilePortable()
+        const p = spawn(exe, ['--dopo-aggiornamento'], {
+          detached: true,
+          stdio: 'ignore',
+          cwd: path.dirname(exe),
+        })
+        p.unref()
+        registra('nuova versione avviata')
+      } catch (e) {
+        registra(`riavvio non riuscito: ${String((e && e.message) || e)}`)
+      }
+    }
     app.exit(0)
   }, 1200)
 }
@@ -1134,7 +1189,16 @@ function smoke() {
 
 // ---------- avvio ----------
 if (!SMOKE) {
-  const lock = app.requestSingleInstanceLock()
+  let lock = app.requestSingleInstanceLock()
+  // Subito dopo un aggiornamento la copia precedente può essere ancora in
+  // chiusura: si aspetta qualche istante invece di arrendersi.
+  if (!lock && process.argv.includes('--dopo-aggiornamento')) {
+    const attesa = new Int32Array(new SharedArrayBuffer(4))
+    for (let i = 0; i < 30 && !lock; i++) {
+      Atomics.wait(attesa, 0, 0, 400)
+      lock = app.requestSingleInstanceLock()
+    }
+  }
   if (!lock) {
     app.quit()
   } else {
@@ -1162,6 +1226,7 @@ app.whenReady().then(() => {
   }
   statoAgg.supportato = agg.aggiornamentoSupportato()
   statoAgg.versioneCorrente = app.getVersion()
+  agg.ripulisciVecchioEseguibile() // rimuove la copia lasciata dall'aggiornamento
   // se questa versione è quella che stavamo installando, l'aggiornamento è riuscito
   const inSospeso = leggiTentativi()
   if (inSospeso.versione && agg.confrontaVersioni(app.getVersion(), inSospeso.versione) >= 0) {

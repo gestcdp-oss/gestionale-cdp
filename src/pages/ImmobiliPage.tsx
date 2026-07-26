@@ -235,7 +235,7 @@ export default function ImmobiliPage() {
   return (
     <div className="space-y-8">
       <section>
-        <h1 className="text-xl font-bold text-cielo-800">Immobili — Anagrafica</h1>
+        <h1 className="text-xl font-bold text-cielo-800">Inserisci/Seleziona Immobile</h1>
         <p className="mt-1 text-sm text-cielo-600">
           Ogni immobile è identificato dal numero <b>Asset</b> (univoco; nei fogli attività compare anche
           come <b>COD. AGGREGATO</b>).

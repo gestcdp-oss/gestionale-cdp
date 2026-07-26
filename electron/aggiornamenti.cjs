@@ -190,9 +190,133 @@ async function scaricaAggiornamento(info, onProgresso) {
 }
 
 /**
- * Crea lo script che sostituisce l'eseguibile e riavvia il programma.
- * Lo script attende la chiusura dell'app, tiene una copia di sicurezza del
- * vecchio file e la ripristina se qualcosa va storto.
+ * Sostituzione SENZA script esterni: è la via che richiede meno permessi, quindi
+ * la più adatta a un computer aziendale (niente prompt dei comandi, niente host
+ * di script, nessuna finestra). Funziona perché Windows permette di RINOMINARE
+ * un eseguibile anche mentre è in esecuzione: si mette da parte il vecchio file,
+ * si porta il nuovo al suo posto e si riavvia il programma.
+ * Se qualcosa non riesce, il vecchio eseguibile torna al suo posto.
+ *
+ * Ritorna il percorso del file messo da parte (da rimuovere al prossimo avvio).
+ */
+function sostituisciSenzaScript(fileNuovo) {
+  const bersaglio = eseguibilePortable()
+  if (!bersaglio) throw new Error('Aggiornamento disponibile solo nella versione portable.')
+  const messoDaParte = `${bersaglio}.precedente`
+
+  try {
+    fs.unlinkSync(messoDaParte)
+  } catch {
+    /* non c'era: va bene */
+  }
+
+  fs.renameSync(bersaglio, messoDaParte) // consentito anche con l'app aperta
+  try {
+    fs.renameSync(fileNuovo, bersaglio)
+  } catch (e) {
+    fs.renameSync(messoDaParte, bersaglio) // ripristino: si resta alla versione attuale
+    throw e
+  }
+  return messoDaParte
+}
+
+/** Rimuove il vecchio eseguibile lasciato dall'aggiornamento precedente. */
+function ripulisciVecchioEseguibile() {
+  const bersaglio = eseguibilePortable()
+  if (!bersaglio) return
+  try {
+    fs.unlinkSync(`${bersaglio}.precedente`)
+  } catch {
+    /* non c'è o è ancora bloccato: si riproverà al prossimo avvio */
+  }
+}
+
+/**
+ * Script di sostituzione scritto per l'host di sistema "wscript": a differenza
+ * dei file .cmd non apre MAI finestre del prompt (era la causa delle finestrelle
+ * nere che comparivano a raffica durante l'aggiornamento).
+ * Attende la chiusura dell'app, conserva una copia del vecchio eseguibile e la
+ * ripristina se la sostituzione non riesce.
+ */
+function creaScriptInvisibile(fileNuovo) {
+  const bersaglio = eseguibilePortable()
+  const dir = cartellaAppoggio()
+  const script = path.join(dir, 'sostituisci.vbs')
+  const backup = `${bersaglio}.precedente`
+  const registro = path.join(dir, 'registro-sostituzione.txt')
+  const vbs = (s) => String(s).replace(/"/g, '""')
+
+  const contenuto = `Option Explicit
+Dim fso, sh, bersaglio, nuovo, backup, registro, tentativi, fatto
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set sh = CreateObject("WScript.Shell")
+bersaglio = "${vbs(bersaglio)}"
+nuovo = "${vbs(fileNuovo)}"
+backup = "${vbs(backup)}"
+registro = "${vbs(registro)}"
+
+Sub Nota(testo)
+  Dim f
+  On Error Resume Next
+  Set f = fso.OpenTextFile(registro, 8, True)
+  f.WriteLine Now & "  " & testo
+  f.Close
+  On Error Goto 0
+End Sub
+
+Nota "sostituzione avviata"
+
+' Finché l'applicazione è aperta il suo eseguibile resta bloccato e lo
+' spostamento non riesce: il ciclo di tentativi fa quindi anche da attesa
+' (fino a un minuto), senza bisogno di interrogare l'elenco dei processi.
+WScript.Sleep 1500
+fatto = False
+tentativi = 0
+Do While Not fatto And tentativi < 60
+  On Error Resume Next
+  If fso.FileExists(backup) Then fso.DeleteFile backup, True
+  Err.Clear
+  fso.MoveFile bersaglio, backup
+  If Err.Number = 0 Then
+    fatto = True
+  ElseIf tentativi = 0 Or tentativi = 10 Or tentativi = 30 Then
+    Nota "in attesa che il programma si chiuda (tentativo " & (tentativi + 1) & ")"
+  End If
+  On Error Goto 0
+  If Not fatto Then
+    WScript.Sleep 1000
+    tentativi = tentativi + 1
+  End If
+Loop
+
+If fatto Then
+  On Error Resume Next
+  fso.MoveFile nuovo, bersaglio
+  If Err.Number <> 0 Or Not fso.FileExists(bersaglio) Then
+    Nota "copia nuova non riuscita: ripristino la precedente"
+    fso.MoveFile backup, bersaglio
+  Else
+    Nota "sostituzione completata"
+  End If
+  On Error Goto 0
+Else
+  Nota "RINUNCIA: impossibile sostituire, riavvio la versione attuale"
+End If
+
+' riavvia il programma e ripulisce i file di servizio
+sh.Run """" & bersaglio & """", 1, False
+WScript.Sleep 3000
+On Error Resume Next
+If fso.FileExists(backup) Then fso.DeleteFile backup, True
+fso.DeleteFile WScript.ScriptFullName, True
+`
+  fs.writeFileSync(script, contenuto, 'utf8')
+  return script
+}
+
+/**
+ * Versione di riserva in file .cmd, usata solo se l'host di sistema non è
+ * disponibile (alcune configurazioni aziendali lo bloccano).
  */
 function creaScriptSostituzione(fileNuovo) {
   const bersaglio = eseguibilePortable()
@@ -272,12 +396,9 @@ del /f /q "%~f0" >nul 2>&1
  * e sparire finestre nere del prompt dei comandi, che sembrano un errore.
  */
 function avviaSostituzione(fileNuovo) {
-  const script = creaScriptSostituzione(fileNuovo)
-  const dir = cartellaAppoggio()
-  const avviatore = path.join(dir, 'avvia-nascosto.vbs')
-
-  // metodo di riserva, se il sistema non permette lo script invisibile
+  // metodo di riserva (con finestra a vista) se l'host di sistema è bloccato
   const avvioDiretto = () => {
+    const script = creaScriptSostituzione(fileNuovo)
     const q = spawn('cmd.exe', ['/c', script], {
       detached: true,
       stdio: 'ignore',
@@ -288,9 +409,8 @@ function avviaSostituzione(fileNuovo) {
   }
 
   try {
-    // "0" = finestra nascosta, "False" = non attendere la fine
-    fs.writeFileSync(avviatore, `CreateObject("WScript.Shell").Run "cmd /c ""${script}""", 0, False\r\n`, 'utf8')
-    const p = spawn('wscript.exe', ['//B', '//Nologo', avviatore], {
+    const script = creaScriptInvisibile(fileNuovo)
+    const p = spawn('wscript.exe', ['//B', '//Nologo', script], {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
@@ -310,6 +430,8 @@ module.exports = {
   eseguibilePortable,
   cercaAggiornamento,
   scaricaAggiornamento,
+  sostituisciSenzaScript,
+  ripulisciVecchioEseguibile,
   creaScriptSostituzione,
   avviaSostituzione,
   cartellaAppoggio,

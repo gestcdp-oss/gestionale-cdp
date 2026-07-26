@@ -58,6 +58,7 @@ type ApiTravi = {
   }
   mappa: {
     apri(query: string, modo: 'finestra' | 'browser'): Promise<RispostaDb<null>>
+    anteprima(query: string, tipo: 'mappa' | 'streetview'): Promise<RispostaDb<string>>
   }
   database: {
     esporta(): Promise<RispostaDb<{ percorso: string; immobili: number } | null>>
@@ -129,7 +130,7 @@ const stub: ApiTravi = {
   utenti: { list: async () => ({ data: [], error: ERRORE_AMBIENTE }), insert: ko, update: ko, resetPassword: ko, remove: ko },
   preferenze: { tutte: async () => ({ data: {}, error: ERRORE_AMBIENTE }), imposta: ko },
   immobili: { list: async () => ({ data: [], error: ERRORE_AMBIENTE }), insert: ko, update: ko, remove: ko },
-  mappa: { apri: ko },
+  mappa: { apri: ko, anteprima: ko },
   database: { esporta: ko, verificaImport: ko, applicaImport: ko },
   collegamenti: {
     stato: async () => ({ data: { desktop: false, menuAvvio: false, giaChiesto: true }, error: ERRORE_AMBIENTE }),
