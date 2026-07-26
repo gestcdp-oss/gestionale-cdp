@@ -56,6 +56,9 @@ type ApiTravi = {
     update(id: string, campi: ImmobileInput): Promise<RispostaDb<null>>
     remove(id: string): Promise<RispostaDb<null>>
   }
+  mappa: {
+    apri(query: string, modo: 'finestra' | 'browser'): Promise<RispostaDb<null>>
+  }
   versione(): Promise<string>
 }
 
@@ -81,6 +84,7 @@ const stub: ApiTravi = {
   utenti: { list: async () => ({ data: [], error: ERRORE_AMBIENTE }), insert: ko, update: ko, resetPassword: ko, remove: ko },
   preferenze: { tutte: async () => ({ data: {}, error: ERRORE_AMBIENTE }), imposta: ko },
   immobili: { list: async () => ({ data: [], error: ERRORE_AMBIENTE }), insert: ko, update: ko, remove: ko },
+  mappa: { apri: ko },
   versione: async () => 'n/d',
 }
 

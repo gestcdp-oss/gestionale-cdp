@@ -18,7 +18,7 @@ const inputSm =
 export default function ImmobiliPage() {
   const { immobile: selezionato, seleziona } = useSelezione()
   // quanti immobili per pagina: scelta ricordata nelle preferenze dell'utente
-  const { perPagina, impostaPerPagina } = usePreferenze()
+  const { perPagina, impostaPerPagina, modoMappa, impostaModoMappa } = usePreferenze()
 
   const [form, setForm] = useState<Campi>(VUOTO)
   const [immobili, setImmobili] = useState<Immobile[]>([])
@@ -41,6 +41,9 @@ export default function ImmobiliPage() {
   const [eliminaTarget, setEliminaTarget] = useState<Immobile | null>(null)
   const [eliminaErrore, setEliminaErrore] = useState<string | null>(null)
   const [eliminando, setEliminando] = useState(false)
+
+  // mappa: se non c'è ancora una preferenza, la chiediamo al primo utilizzo
+  const [mappaDaAprire, setMappaDaAprire] = useState<string | null>(null)
 
   // Dati estratti UNA sola volta; ricerca/ordinamento/paginazione sono locali.
   async function carica() {
@@ -107,6 +110,23 @@ export default function ImmobiliPage() {
       if (im.denominazione.toLowerCase() === d) return `Esiste già un immobile con Denominazione "${den.trim()}".`
     }
     return null
+  }
+
+  /** Apre la localizzazione in Google Maps; se manca la preferenza, prima la chiede. */
+  function apriMappa(localizzazione: string) {
+    if (!modoMappa) {
+      setMappaDaAprire(localizzazione)
+      return
+    }
+    void dbLocale.mappa.apri(localizzazione, modoMappa)
+  }
+
+  /** Scelta fatta nella finestra: salva la preferenza e apre subito la mappa. */
+  function scegliModoEApri(modo: 'finestra' | 'browser') {
+    const dove = mappaDaAprire
+    impostaModoMappa(modo)
+    setMappaDaAprire(null)
+    if (dove) void dbLocale.mappa.apri(dove, modo)
   }
 
   // seleziona l'immobile: aggiorna header, mostra toast e riporta in cima
@@ -321,19 +341,20 @@ export default function ImmobiliPage() {
                 <ThOrdinabile label="Denominazione" campo="denominazione" ordine={ordine} setOrdine={setOrdine} />
                 <ThOrdinabile label="Portafoglio" campo="portafoglio" ordine={ordine} setOrdine={setOrdine} />
                 <ThOrdinabile label="Localizzazione" campo="localizzazione" ordine={ordine} setOrdine={setOrdine} />
+                <th className="w-8 px-1 py-2" />
                 <th className="w-24 px-2 py-2" />
               </tr>
             </thead>
             <tbody>
               {caricamento ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-cielo-400">
+                  <td colSpan={7} className="px-4 py-6 text-center text-cielo-400">
                     Caricamento…
                   </td>
                 </tr>
               ) : ordinati.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-cielo-400">
+                  <td colSpan={7} className="px-4 py-6 text-center text-cielo-400">
                     {ricerca.trim().length >= 3 ? 'Nessun risultato per la ricerca.' : 'Nessun immobile inserito.'}
                   </td>
                 </tr>
@@ -372,6 +393,7 @@ export default function ImmobiliPage() {
                             className={inputSm}
                           />
                         </td>
+                        <td className="px-1 py-1.5" />
                         <td className="px-2 py-1.5">
                           <div className="flex items-center justify-end gap-1">
                             <button
@@ -393,7 +415,7 @@ export default function ImmobiliPage() {
                       </tr>
                       {editErrore && (
                         <tr className="bg-cielo-50">
-                          <td colSpan={6} className="px-4 pb-2 text-sm text-red-700">
+                          <td colSpan={7} className="px-4 pb-2 text-sm text-red-700">
                             {editErrore}
                           </td>
                         </tr>
@@ -423,6 +445,17 @@ export default function ImmobiliPage() {
                       <td className="px-4 py-2 text-cielo-800">{i.denominazione}</td>
                       <td className="px-4 py-2 text-cielo-600">{i.portafoglio || '—'}</td>
                       <td className="px-4 py-2 text-cielo-600">{i.localizzazione || '—'}</td>
+                      <td className="px-1 py-2 text-center">
+                        {i.localizzazione && (
+                          <button
+                            onClick={() => apriMappa(i.localizzazione as string)}
+                            title={`Apri in Google Maps: ${i.localizzazione}`}
+                            className="rounded p-1 text-cielo-500 transition hover:bg-cielo-100 hover:text-cielo-700"
+                          >
+                            <IconaMappamondo />
+                          </button>
+                        )}
+                      </td>
                       <td className="px-2 py-2">
                         <div className="flex items-center justify-end gap-1 opacity-0 transition group-hover:opacity-100">
                           <button
@@ -470,6 +503,53 @@ export default function ImmobiliPage() {
           </div>
         )}
       </section>
+
+      {/* --- prima apertura mappa: scelta (viene salvata nelle preferenze) --- */}
+      {mappaDaAprire && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-velo p-4"
+          onClick={() => setMappaDaAprire(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-cielo-200 bg-panna p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-cielo-800">Dove vuoi aprire la mappa?</h3>
+            <p className="mt-2 text-sm text-cielo-700">
+              Scegli come aprire <b>{mappaDaAprire}</b> su Google Maps. La scelta viene ricordata e resta
+              modificabile in <b>Utenti › Preferenze</b>.
+            </p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <button
+                onClick={() => scegliModoEApri('finestra')}
+                className="rounded-xl border border-cielo-300 bg-white p-4 text-left transition hover:border-cielo-400 hover:bg-cielo-50"
+              >
+                <span className="block font-medium text-cielo-800">Nella finestra dell'app</span>
+                <span className="mt-1 block text-xs text-cielo-600">
+                  Finestra ridimensionabile con la sola mappa navigabile.
+                </span>
+              </button>
+              <button
+                onClick={() => scegliModoEApri('browser')}
+                className="rounded-xl border border-cielo-300 bg-white p-4 text-left transition hover:border-cielo-400 hover:bg-cielo-50"
+              >
+                <span className="block font-medium text-cielo-800">Nel browser</span>
+                <span className="mt-1 block text-xs text-cielo-600">
+                  Apre Google Maps completo nel browser predefinito.
+                </span>
+              </button>
+            </div>
+            <div className="mt-5 text-right">
+              <button
+                onClick={() => setMappaDaAprire(null)}
+                className="rounded-lg px-4 py-2 text-sm text-cielo-600 transition hover:bg-cielo-100"
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed inset-x-0 top-4 z-50 flex justify-center px-4">
@@ -630,6 +710,16 @@ function IconaLente() {
     >
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.3-4.3" />
+    </svg>
+  )
+}
+
+function IconaMappamondo() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
     </svg>
   )
 }

@@ -2,7 +2,7 @@
 // App COMPLETAMENTE locale: database SQLite nella cartella "dati" accanto all'eseguibile.
 // Nessuna connessione a internet.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron')
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const crypto = require('node:crypto')
@@ -430,6 +430,94 @@ ipcMain.handle('immobili:delete', (_ev, id) =>
 
 ipcMain.handle('app:versione', () => app.getVersion())
 
+// ---------- mappa (Google Maps) ----------
+// ATTENZIONE: aprire la mappa invia la localizzazione a Google (unica funzione
+// dell'app che esce su internet). Tutto il resto resta sul computer.
+function urlMappa(query, modo) {
+  const q = String(query || '').trim()
+  if (!q) throw new Error('Localizzazione non indicata.')
+  return modo === 'browser'
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
+    : `https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed&hl=it`
+}
+
+const HOST_AMMESSI = /(^|\.)(google\.com|google\.it|gstatic\.com|googleapis\.com|ggpht\.com)$/i
+
+function hostAmmesso(url) {
+  try {
+    return HOST_AMMESSI.test(new URL(url).hostname)
+  } catch {
+    return false
+  }
+}
+
+/** @type {BrowserWindow | null} */
+let finestraMappa = null
+
+function paginaErroreMappa(titolo) {
+  const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;display:flex;align-items:center;
+    justify-content:center;height:100vh;font-family:system-ui,'Segoe UI',sans-serif;background:#e6f0f8;color:#37596f">
+    <div style="text-align:center;max-width:420px;padding:24px">
+      <div style="font-size:40px">🌐</div>
+      <h2 style="margin:12px 0 6px">Mappa non disponibile</h2>
+      <p style="margin:0;line-height:1.5;color:#426e96">Non è stato possibile aprire Google Maps per
+      <b>${String(titolo).replace(/[<>&]/g, '')}</b>.<br>Serve una connessione a internet.</p>
+    </div></body>`
+  return 'data:text/html;charset=utf-8,' + encodeURIComponent(html)
+}
+
+function apriFinestraMappa(query) {
+  const url = urlMappa(query, 'finestra')
+  if (finestraMappa && !finestraMappa.isDestroyed()) {
+    finestraMappa.loadURL(url)
+    finestraMappa.show()
+    finestraMappa.focus()
+    return
+  }
+  const principale = BrowserWindow.getAllWindows()[0] ?? undefined
+  finestraMappa = new BrowserWindow({
+    width: 900,
+    height: 680,
+    minWidth: 420,
+    minHeight: 320,
+    parent: principale,
+    title: `Mappa — ${query}`,
+    backgroundColor: '#e6f0f8',
+    autoHideMenuBar: true,
+    resizable: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  })
+  finestraMappa.setMenu(null)
+  // la finestra mostra solo mappe Google: qualsiasi altra destinazione va nel browser
+  finestraMappa.webContents.setWindowOpenHandler(({ url: u }) => {
+    void shell.openExternal(u)
+    return { action: 'deny' }
+  })
+  finestraMappa.webContents.on('will-navigate', (ev, u) => {
+    if (!hostAmmesso(u)) ev.preventDefault()
+  })
+  finestraMappa.webContents.on('did-fail-load', (_e, codice) => {
+    if (codice === -3) return // caricamento annullato: non è un errore
+    void finestraMappa?.loadURL(paginaErroreMappa(query))
+  })
+  finestraMappa.on('closed', () => {
+    finestraMappa = null
+  })
+  void finestraMappa.loadURL(url)
+}
+
+ipcMain.handle('mappa:apri', (_ev, { query, modo }) =>
+  rispondi(() => {
+    richiediSessione()
+    if (modo === 'browser') {
+      void shell.openExternal(urlMappa(query, 'browser'))
+    } else {
+      apriFinestraMappa(String(query).trim())
+    }
+    return null
+  }),
+)
+
 // ---------- finestra ----------
 function creaFinestra() {
   const win = new BrowserWindow({
@@ -530,6 +618,21 @@ function smoke() {
     rapporto.utente_non_puo_eliminare = elimUtenteNegata
     db.prepare('delete from utenti where id = ?').run(idPerm)
 
+    // --- indirizzi mappa (indirizzo, coordinate, caratteri speciali)
+    const finestra = urlMappa('Via di Toppo, 31, 33100 Udine', 'finestra')
+    const browser = urlMappa('41.9028, 12.4964', 'browser')
+    rapporto.mappa_finestra_ok = finestra.includes('output=embed') && finestra.includes('Via%20di%20Toppo')
+    rapporto.mappa_browser_ok = browser.includes('maps/search') && browser.includes('41.9028%2C%2012.4964')
+    let mappaVuotaRespinta = false
+    try {
+      urlMappa('  ', 'finestra')
+    } catch {
+      mappaVuotaRespinta = true
+    }
+    rapporto.mappa_vuota_respinta = mappaVuotaRespinta
+    rapporto.mappa_host_filtrati =
+      hostAmmesso('https://www.google.com/maps') && !hostAmmesso('https://sito-esterno.example')
+
     // --- preferenze
     db.prepare('insert or replace into preferenze (utente_id, chiave, valore) values (?, ?, ?)').run(uid, 'tema', 'bordeaux')
     db.prepare('insert or replace into preferenze (utente_id, chiave, valore) values (?, ?, ?)').run(uid, 'per_pagina', '30')
@@ -552,6 +655,10 @@ function smoke() {
       rapporto.permanente_non_eliminabile &&
       rapporto.permanente_resta_admin &&
       rapporto.utente_non_puo_eliminare &&
+      rapporto.mappa_finestra_ok &&
+      rapporto.mappa_browser_ok &&
+      rapporto.mappa_vuota_respinta &&
+      rapporto.mappa_host_filtrati &&
       rapporto.preferenze.tema === 'bordeaux' &&
       rapporto.preferenze.per_pagina === '30' &&
       rapporto.dopo_delete === rapporto.immobili_iniziali

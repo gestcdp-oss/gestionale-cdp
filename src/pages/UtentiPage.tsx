@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { dbLocale } from '../lib/db'
 import type { Utente } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
+import { usePreferenze } from '../hooks/usePreferenze'
 
 const inputCls =
   'w-full rounded-lg border border-cielo-300 bg-white px-3 py-2 text-sm text-cielo-800 outline-none transition focus:border-cielo-400 focus:ring-2 focus:ring-cielo-100'
@@ -13,6 +14,7 @@ const NUOVO = { nome: '', cognome: '', email: '', password: '', ripeti: '', ruol
 
 export default function UtentiPage() {
   const { utente, cambiaPassword, ricarica } = useAuth()
+  const { modoMappa, impostaModoMappa } = usePreferenze()
   const admin = utente?.ruolo === 'admin'
 
   const [utenti, setUtenti] = useState<Utente[]>([])
@@ -261,6 +263,44 @@ export default function UtentiPage() {
         </form>
       </section>
 
+      {/* --- preferenze personali --- */}
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">Preferenze</h2>
+        <div className="mt-3 max-w-2xl rounded-xl border border-cielo-200 bg-panna p-5">
+          <h3 className="text-sm font-semibold text-cielo-800">Apertura delle mappe</h3>
+          <p className="mt-1 text-sm text-cielo-600">
+            Cosa succede quando clicchi l'icona del mappamondo accanto alla localizzazione di un immobile.
+          </p>
+          <div className="mt-4 space-y-2">
+            <OpzioneMappa
+              valore="finestra"
+              attuale={modoMappa}
+              onScegli={impostaModoMappa}
+              titolo="Nella finestra dell'app"
+              desc="Finestra ridimensionabile con la sola mappa navigabile."
+            />
+            <OpzioneMappa
+              valore="browser"
+              attuale={modoMappa}
+              onScegli={impostaModoMappa}
+              titolo="Nel browser"
+              desc="Apre Google Maps completo nel browser predefinito."
+            />
+            <OpzioneMappa
+              valore={null}
+              attuale={modoMappa}
+              onScegli={impostaModoMappa}
+              titolo="Chiedimelo ogni volta"
+              desc="Al prossimo clic l'app ti richiederà dove aprire la mappa."
+            />
+          </div>
+          <p className="mt-4 rounded-lg bg-cielo-50 p-3 text-xs leading-relaxed text-cielo-600">
+            Nota: aprire la mappa invia la localizzazione dell'immobile a Google. È l'unica funzione dell'app
+            che usa internet; tutti gli altri dati restano su questo computer.
+          </p>
+        </div>
+      </section>
+
       {/* --- nuovo utente (solo amministratori) --- */}
       {admin && (
         <section>
@@ -504,6 +544,41 @@ export default function UtentiPage() {
         </Modale>
       )}
     </div>
+  )
+}
+
+function OpzioneMappa({
+  valore,
+  attuale,
+  onScegli,
+  titolo,
+  desc,
+}: {
+  valore: 'finestra' | 'browser' | null
+  attuale: 'finestra' | 'browser' | null
+  onScegli: (v: 'finestra' | 'browser' | null) => void
+  titolo: string
+  desc: string
+}) {
+  const scelta = attuale === valore
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
+        scelta ? 'border-cielo-400 bg-cielo-50' : 'border-cielo-200 hover:bg-cielo-50'
+      }`}
+    >
+      <input
+        type="radio"
+        name="modo-mappa"
+        checked={scelta}
+        onChange={() => onScegli(valore)}
+        className="mt-0.5 accent-cielo-600"
+      />
+      <span>
+        <span className="block text-sm font-medium text-cielo-800">{titolo}</span>
+        <span className="mt-0.5 block text-xs text-cielo-600">{desc}</span>
+      </span>
+    </label>
   )
 }
 

@@ -26,5 +26,8 @@ contextBridge.exposeInMainWorld('travi', {
     update: (id, campi) => ipcRenderer.invoke('immobili:update', { id, campi }),
     remove: (id) => ipcRenderer.invoke('immobili:delete', id),
   },
+  mappa: {
+    apri: (query, modo) => ipcRenderer.invoke('mappa:apri', { query, modo }),
+  },
   versione: () => ipcRenderer.invoke('app:versione'),
 })

@@ -14,8 +14,10 @@
     "smoke": "npm run build && electron . --smoke",
     "icona": "node scripts/genera-icona.mjs",
     "chiudi": "node scripts/chiudi-app.mjs",
+    "avvia": "node scripts/avvia-app.mjs",
     "predist": "node scripts/chiudi-app.mjs",
     "dist": "npm run build && electron-builder --win",
+    "postdist": "node scripts/avvia-app.mjs",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
