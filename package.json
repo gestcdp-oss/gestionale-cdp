@@ -13,6 +13,8 @@
     "app": "npm run build && electron .",
     "smoke": "npm run build && electron . --smoke",
     "icona": "node scripts/genera-icona.mjs",
+    "chiudi": "node scripts/chiudi-app.mjs",
+    "predist": "node scripts/chiudi-app.mjs",
     "dist": "npm run build && electron-builder --win",
     "postinstall": "electron-builder install-app-deps"
   },
