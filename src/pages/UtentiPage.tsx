@@ -4,6 +4,7 @@ import { dbLocale } from '../lib/db'
 import type { Utente, AnteprimaImport } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
 import { usePreferenze } from '../hooks/usePreferenze'
+import Collegamenti from '../components/Collegamenti'
 
 const inputCls =
   'w-full rounded-lg border border-cielo-300 bg-white px-3 py-2 text-sm text-cielo-800 outline-none transition focus:border-cielo-400 focus:ring-2 focus:ring-cielo-100'
@@ -16,6 +17,12 @@ export default function UtentiPage() {
   const { utente, cambiaPassword, ricarica } = useAuth()
   const { modoMappa, impostaModoMappa } = usePreferenze()
   const admin = utente?.ruolo === 'admin'
+
+  // una sola voce aperta per volta
+  const [aperto, setAperto] = useState<string | null>('profilo')
+  function apri(id: string) {
+    setAperto((corrente) => (corrente === id ? null : id))
+  }
 
   const [utenti, setUtenti] = useState<Utente[]>([])
   const [caricamento, setCaricamento] = useState(true)
@@ -36,7 +43,7 @@ export default function UtentiPage() {
   const [nuovoErrore, setNuovoErrore] = useState<string | null>(null)
   const [nuovoOk, setNuovoOk] = useState<string | null>(null)
 
-  // esporta / importa database
+  // esporta / importa dati
   const [dbMessaggio, setDbMessaggio] = useState<string | null>(null)
   const [dbErrore, setDbErrore] = useState<string | null>(null)
   const [anteprima, setAnteprima] = useState<AnteprimaImport | null>(null)
@@ -140,7 +147,7 @@ export default function UtentiPage() {
     void carica()
   }
 
-  // ---- esporta / importa database ----
+  // ---- esporta / importa dati ----
   async function esportaDb() {
     setDbErrore(null)
     setDbMessaggio(null)
@@ -235,91 +242,94 @@ export default function UtentiPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <section>
-        <h1 className="text-xl font-bold text-cielo-800">Utenti</h1>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div>
+        <h1 className="text-xl font-bold text-cielo-800">Utenti e impostazioni</h1>
         <p className="mt-1 text-sm text-cielo-600">
-          L'accesso al programma avviene con <b>email</b> (nome utente) e <b>password</b>. I dati restano su questo
-          computer.
+          Clicca su una voce per aprirla. L'accesso al programma avviene con <b>email</b> e <b>password</b>; i
+          dati restano su questo computer.
         </p>
-      </section>
+      </div>
 
-      {/* --- il mio profilo --- */}
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">Il mio profilo</h2>
-        <form onSubmit={salvaProfilo} className="mt-3 max-w-2xl rounded-xl border border-cielo-200 bg-panna p-5">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Campo label="Nome">
-              <input value={profilo.nome} onChange={(e) => setProfilo({ ...profilo, nome: e.target.value })} className={inputCls} />
-            </Campo>
-            <Campo label="Cognome">
-              <input value={profilo.cognome} onChange={(e) => setProfilo({ ...profilo, cognome: e.target.value })} className={inputCls} />
-            </Campo>
-            <Campo label="Email (nome utente) *">
-              <input type="email" value={profilo.email} onChange={(e) => setProfilo({ ...profilo, email: e.target.value })} className={inputCls} />
-            </Campo>
-          </div>
+      <div className="space-y-3">
+        {/* ---------------- profilo ---------------- */}
+        <Pannello
+          id="profilo"
+          aperto={aperto}
+          onApri={apri}
+          titolo="Il mio profilo"
+          descrizione="Nome, cognome e indirizzo email con cui accedi al programma; qui puoi anche cambiare la password."
+        >
+          <form onSubmit={salvaProfilo}>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Campo label="Nome">
+                <input value={profilo.nome} onChange={(e) => setProfilo({ ...profilo, nome: e.target.value })} className={inputCls} />
+              </Campo>
+              <Campo label="Cognome">
+                <input value={profilo.cognome} onChange={(e) => setProfilo({ ...profilo, cognome: e.target.value })} className={inputCls} />
+              </Campo>
+              <Campo label="Email (nome utente) *">
+                <input type="email" value={profilo.email} onChange={(e) => setProfilo({ ...profilo, email: e.target.value })} className={inputCls} />
+              </Campo>
+            </div>
 
-          {profErrore && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{profErrore}</p>}
-          {profOk && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{profOk}</p>}
-          {pwdOk && !apriPwd && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{pwdOk}</p>}
+            {profErrore && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{profErrore}</p>}
+            {profOk && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{profOk}</p>}
+            {pwdOk && !apriPwd && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{pwdOk}</p>}
 
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              className="rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
-            >
-              Salva dati
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setApriPwd((v) => !v)
-                setPwdErrore(null)
-                setPwdOk(null)
-              }}
-              className="rounded-lg border border-cielo-300 px-4 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50"
-            >
-              {apriPwd ? 'Annulla cambio password' : 'Cambia password'}
-            </button>
-          </div>
-
-          {apriPwd && (
-            <div className="mt-4 rounded-xl border border-cielo-200 bg-cielo-50 p-4">
-              <h3 className="text-sm font-semibold text-cielo-800">Cambia password</h3>
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <Campo label="Password attuale">
-                  <input type="password" value={pwd.vecchia} onChange={(e) => setPwd({ ...pwd, vecchia: e.target.value })} className={inputCls} />
-                </Campo>
-                <Campo label="Nuova password (min. 8)">
-                  <input type="password" value={pwd.nuova} onChange={(e) => setPwd({ ...pwd, nuova: e.target.value })} className={inputCls} />
-                </Campo>
-                <Campo label="Ripeti nuova password">
-                  <input type="password" value={pwd.ripeti} onChange={(e) => setPwd({ ...pwd, ripeti: e.target.value })} className={inputCls} />
-                </Campo>
-              </div>
-              {pwdErrore && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{pwdErrore}</p>}
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button type="submit" className="rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600">
+                Salva dati
+              </button>
               <button
                 type="button"
-                onClick={(e) => void inviaCambioPassword(e as unknown as FormEvent)}
-                className="mt-4 rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
+                onClick={() => {
+                  setApriPwd((v) => !v)
+                  setPwdErrore(null)
+                  setPwdOk(null)
+                }}
+                className="rounded-lg border border-cielo-300 px-4 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50"
               >
-                Aggiorna password
+                {apriPwd ? 'Annulla cambio password' : 'Cambia password'}
               </button>
             </div>
-          )}
-        </form>
-      </section>
 
-      {/* --- preferenze personali --- */}
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">Preferenze</h2>
-        <div className="mt-3 max-w-2xl rounded-xl border border-cielo-200 bg-panna p-5">
-          <h3 className="text-sm font-semibold text-cielo-800">Apertura delle mappe</h3>
-          <p className="mt-1 text-sm text-cielo-600">
-            Cosa succede quando clicchi l'icona del mappamondo accanto alla localizzazione di un immobile.
-          </p>
-          <div className="mt-4 space-y-2">
+            {apriPwd && (
+              <div className="mt-4 rounded-xl border border-cielo-200 bg-cielo-50 p-4">
+                <h3 className="text-sm font-semibold text-cielo-800">Cambia password</h3>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <Campo label="Password attuale">
+                    <input type="password" value={pwd.vecchia} onChange={(e) => setPwd({ ...pwd, vecchia: e.target.value })} className={inputCls} />
+                  </Campo>
+                  <Campo label="Nuova password (min. 8)">
+                    <input type="password" value={pwd.nuova} onChange={(e) => setPwd({ ...pwd, nuova: e.target.value })} className={inputCls} />
+                  </Campo>
+                  <Campo label="Ripeti nuova password">
+                    <input type="password" value={pwd.ripeti} onChange={(e) => setPwd({ ...pwd, ripeti: e.target.value })} className={inputCls} />
+                  </Campo>
+                </div>
+                {pwdErrore && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{pwdErrore}</p>}
+                <button
+                  type="button"
+                  onClick={(e) => void inviaCambioPassword(e as unknown as FormEvent)}
+                  className="mt-4 rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
+                >
+                  Aggiorna password
+                </button>
+              </div>
+            )}
+          </form>
+        </Pannello>
+
+        {/* ---------------- mappe ---------------- */}
+        <Pannello
+          id="mappe"
+          aperto={aperto}
+          onApri={apri}
+          titolo="Apertura delle mappe"
+          descrizione="Cosa succede quando clicchi l'icona del mappamondo accanto alla localizzazione di un immobile."
+        >
+          <div className="space-y-2">
             <OpzioneMappa
               valore="finestra"
               attuale={modoMappa}
@@ -343,20 +353,34 @@ export default function UtentiPage() {
             />
           </div>
           <p className="mt-4 rounded-lg bg-cielo-50 p-3 text-xs leading-relaxed text-cielo-600">
-            Nota: aprire la mappa invia la localizzazione dell'immobile a Google. È l'unica funzione dell'app
-            che usa internet; tutti gli altri dati restano su questo computer.
+            Nota: aprire la mappa invia la localizzazione dell'immobile a Google. È l'unica funzione dell'app che
+            usa internet; tutti gli altri dati restano su questo computer.
           </p>
-        </div>
-      </section>
+        </Pannello>
 
-      {/* --- database: esporta / importa --- */}
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">Database</h2>
-        <div className="mt-3 max-w-2xl rounded-xl border border-cielo-200 bg-panna p-5">
+        {/* ---------------- collegamenti ---------------- */}
+        <Pannello
+          id="collegamenti"
+          aperto={aperto}
+          onApri={apri}
+          titolo="Collegamenti sul computer"
+          descrizione="Aggiungi TR.A.V.I. sul desktop e nel menu Start, per ritrovarlo senza cercare la cartella."
+        >
+          <Collegamenti />
+        </Pannello>
+
+        {/* ---------------- dati ---------------- */}
+        <Pannello
+          id="dati"
+          aperto={aperto}
+          onApri={apri}
+          titolo="Dati degli immobili"
+          descrizione="Esporta i tuoi immobili per passarli a un collega, oppure importa quelli che hai ricevuto."
+        >
           <p className="text-sm text-cielo-600">
-            Ogni copia del programma ha il <b>proprio archivio</b>, sul proprio computer. Per passare gli
-            immobili a un collega: tu esporti un file, lui lo importa e continua a lavorarci{' '}
-            <b>con la sua utenza</b>. Entrambi dovete avere la <b>stessa versione</b> di TR.A.V.I.
+            Ogni copia del programma ha il <b>proprio archivio</b>, sul proprio computer. Vengono trasferiti solo
+            gli immobili: chi importa continua a entrare <b>con la sua utenza</b>. Entrambi dovete avere la{' '}
+            <b>stessa versione</b> di TR.A.V.I.
           </p>
 
           <div className="mt-4 flex flex-wrap gap-3">
@@ -381,208 +405,198 @@ export default function UtentiPage() {
               <IconaAvviso />
             </span>
             <span>
-              <b>Attenzione:</b> l'importazione <b>non aggiunge</b> gli immobili ricevuti ai tuoi: sostituisce
-              per intero l'elenco degli immobili di questo computer. Gli <b>account di accesso restano i
-              tuoi</b>. Prima di procedere, esporta una copia dei tuoi dati.
+              <b>Attenzione:</b> l'importazione <b>non aggiunge</b> gli immobili ricevuti ai tuoi: sostituisce per
+              intero l'elenco degli immobili di questo computer. Gli <b>account di accesso restano i tuoi</b>.
+              Prima di procedere, esporta una copia dei tuoi dati.
             </span>
           </p>
+
           {dbMessaggio && (
             <p className="mt-4 break-all rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{dbMessaggio}</p>
           )}
           {dbErrore && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{dbErrore}</p>}
-        </div>
-      </section>
+        </Pannello>
 
-      {/* --- nuovo utente (solo amministratori) --- */}
-      {admin && (
-        <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">Nuovo utente</h2>
-          <form onSubmit={creaUtente} className="mt-3 max-w-2xl rounded-xl border border-cielo-200 bg-panna p-5">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Campo label="Nome">
-                <input value={nuovo.nome} onChange={(e) => setNuovo({ ...nuovo, nome: e.target.value })} className={inputCls} />
-              </Campo>
-              <Campo label="Cognome">
-                <input value={nuovo.cognome} onChange={(e) => setNuovo({ ...nuovo, cognome: e.target.value })} className={inputCls} />
-              </Campo>
-              <Campo label="Email (nome utente) *">
-                <input type="email" value={nuovo.email} onChange={(e) => setNuovo({ ...nuovo, email: e.target.value })} className={inputCls} />
-              </Campo>
-              <Campo label="Ruolo">
-                <select
-                  value={nuovo.ruolo}
-                  onChange={(e) => setNuovo({ ...nuovo, ruolo: e.target.value as 'utente' | 'admin' })}
-                  className={inputCls}
-                >
-                  <option value="utente">Utente</option>
-                  <option value="admin">Amministratore</option>
-                </select>
-              </Campo>
-              <Campo label="Password * (min. 8 caratteri)">
-                <input type="password" value={nuovo.password} onChange={(e) => setNuovo({ ...nuovo, password: e.target.value })} className={inputCls} />
-              </Campo>
-              <Campo label="Ripeti password *">
-                <input type="password" value={nuovo.ripeti} onChange={(e) => setNuovo({ ...nuovo, ripeti: e.target.value })} className={inputCls} />
-              </Campo>
-            </div>
+        {/* ---------------- nuovo utente ---------------- */}
+        {admin && (
+          <Pannello
+            id="nuovo"
+            aperto={aperto}
+            onApri={apri}
+            titolo="Nuovo utente"
+            descrizione="Crea un accesso per un'altra persona che userà il programma su questo computer."
+          >
+            <form onSubmit={creaUtente}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Campo label="Nome">
+                  <input value={nuovo.nome} onChange={(e) => setNuovo({ ...nuovo, nome: e.target.value })} className={inputCls} />
+                </Campo>
+                <Campo label="Cognome">
+                  <input value={nuovo.cognome} onChange={(e) => setNuovo({ ...nuovo, cognome: e.target.value })} className={inputCls} />
+                </Campo>
+                <Campo label="Email (nome utente) *">
+                  <input type="email" value={nuovo.email} onChange={(e) => setNuovo({ ...nuovo, email: e.target.value })} className={inputCls} />
+                </Campo>
+                <Campo label="Ruolo">
+                  <select
+                    value={nuovo.ruolo}
+                    onChange={(e) => setNuovo({ ...nuovo, ruolo: e.target.value as 'utente' | 'admin' })}
+                    className={inputCls}
+                  >
+                    <option value="utente">Utente</option>
+                    <option value="admin">Amministratore</option>
+                  </select>
+                </Campo>
+                <Campo label="Password * (min. 8 caratteri)">
+                  <input type="password" value={nuovo.password} onChange={(e) => setNuovo({ ...nuovo, password: e.target.value })} className={inputCls} />
+                </Campo>
+                <Campo label="Ripeti password *">
+                  <input type="password" value={nuovo.ripeti} onChange={(e) => setNuovo({ ...nuovo, ripeti: e.target.value })} className={inputCls} />
+                </Campo>
+              </div>
 
-            {nuovoErrore && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{nuovoErrore}</p>}
-            {nuovoOk && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{nuovoOk}</p>}
+              {nuovoErrore && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{nuovoErrore}</p>}
+              {nuovoOk && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{nuovoOk}</p>}
 
-            <button
-              type="submit"
-              className="mt-5 rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
-            >
-              Crea utente
-            </button>
-          </form>
-        </section>
-      )}
+              <button type="submit" className="mt-5 rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600">
+                Crea utente
+              </button>
+            </form>
+          </Pannello>
+        )}
 
-      {/* --- elenco utenti: solo per gli amministratori --- */}
-      {admin && (
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">
-          Utenti registrati {caricamento ? '' : `(${utenti.length})`}
-        </h2>
-        <div className="mt-3 overflow-x-auto rounded-xl border border-cielo-200 bg-panna">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-cielo-200 bg-cielo-50 text-left text-cielo-600">
-                <th className="px-4 py-2 font-medium">Cognome</th>
-                <th className="px-4 py-2 font-medium">Nome</th>
-                <th className="px-4 py-2 font-medium">Email (nome utente)</th>
-                <th className="px-4 py-2 font-medium">Ruolo</th>
-                <th className="w-28 px-2 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {caricamento ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-cielo-400">
-                    Caricamento…
-                  </td>
-                </tr>
-              ) : (
-                utenti.map((u) =>
-                  editId === u.id ? (
-                    <tr key={u.id} className="border-b border-cielo-200 bg-cielo-50 last:border-0">
-                      <td className="px-2 py-1.5">
-                        <input value={editForm.cognome} onChange={(e) => setEditForm({ ...editForm, cognome: e.target.value })} className={inputSm} />
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <input value={editForm.nome} onChange={(e) => setEditForm({ ...editForm, nome: e.target.value })} className={inputSm} />
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <input value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className={inputSm} />
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <select
-                          value={editForm.ruolo}
-                          disabled={!admin || u.permanente}
-                          title={u.permanente ? 'Amministratore permanente: ruolo non modificabile' : undefined}
-                          onChange={(e) => setEditForm({ ...editForm, ruolo: e.target.value as 'utente' | 'admin' })}
-                          className={inputSm}
-                        >
-                          <option value="utente">Utente</option>
-                          <option value="admin">Amministratore</option>
-                        </select>
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => void salvaModifica()}
-                            className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-emerald-700"
-                          >
-                            Salva
-                          </button>
-                          <button
-                            onClick={() => setEditId(null)}
-                            title="Annulla"
-                            className="rounded p-1.5 text-cielo-400 transition hover:bg-cielo-200 hover:text-cielo-700"
-                          >
-                            <IconaX />
-                          </button>
-                        </div>
-                        {editErrore && <p className="pt-1 text-right text-xs text-red-700">{editErrore}</p>}
+        {/* ---------------- elenco utenti ---------------- */}
+        {admin && (
+          <Pannello
+            id="elenco"
+            aperto={aperto}
+            onApri={apri}
+            titolo={`Utenti registrati${caricamento ? '' : ` (${utenti.length})`}`}
+            descrizione="Chi può accedere al programma su questo computer: modifica, reimposta password, elimina."
+          >
+            <div className="overflow-x-auto rounded-xl border border-cielo-200">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-cielo-200 bg-cielo-50 text-left text-cielo-600">
+                    <th className="px-4 py-2 font-medium">Cognome</th>
+                    <th className="px-4 py-2 font-medium">Nome</th>
+                    <th className="px-4 py-2 font-medium">Email</th>
+                    <th className="px-4 py-2 font-medium">Ruolo</th>
+                    <th className="w-28 px-2 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {caricamento ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-6 text-center text-cielo-400">
+                        Caricamento…
                       </td>
                     </tr>
                   ) : (
-                    <tr key={u.id} className="group border-b border-cielo-100 transition last:border-0 hover:bg-cielo-50">
-                      <td className="px-4 py-2 text-cielo-800">{u.cognome || '—'}</td>
-                      <td className="px-4 py-2 text-cielo-800">{u.nome || '—'}</td>
-                      <td className="px-4 py-2 text-cielo-600">
-                        {u.email}
-                        {utente?.id === u.id && <span className="ml-2 text-xs text-cielo-400">(tu)</span>}
-                      </td>
-                      <td className="px-4 py-2">
-                        {u.ruolo === 'admin' ? (
-                          <span className="flex flex-wrap items-center gap-1">
-                            <span className="rounded-full bg-cielo-100 px-2 py-0.5 text-xs font-medium text-cielo-700">
-                              amministratore
-                            </span>
-                            {u.permanente && (
-                              <span
-                                title="Amministratore permanente: non eliminabile né declassabile"
-                                className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
-                              >
-                                permanente
+                    utenti.map((u) =>
+                      editId === u.id ? (
+                        <tr key={u.id} className="border-b border-cielo-200 bg-cielo-50 last:border-0">
+                          <td className="px-2 py-1.5">
+                            <input value={editForm.cognome} onChange={(e) => setEditForm({ ...editForm, cognome: e.target.value })} className={inputSm} />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <input value={editForm.nome} onChange={(e) => setEditForm({ ...editForm, nome: e.target.value })} className={inputSm} />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <input value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className={inputSm} />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <select
+                              value={editForm.ruolo}
+                              disabled={!admin || u.permanente}
+                              title={u.permanente ? 'Amministratore permanente: ruolo non modificabile' : undefined}
+                              onChange={(e) => setEditForm({ ...editForm, ruolo: e.target.value as 'utente' | 'admin' })}
+                              className={inputSm}
+                            >
+                              <option value="utente">Utente</option>
+                              <option value="admin">Amministratore</option>
+                            </select>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => void salvaModifica()} className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-emerald-700">
+                                Salva
+                              </button>
+                              <button onClick={() => setEditId(null)} title="Annulla" className="rounded p-1.5 text-cielo-400 transition hover:bg-cielo-200 hover:text-cielo-700">
+                                <IconaX />
+                              </button>
+                            </div>
+                            {editErrore && <p className="pt-1 text-right text-xs text-red-700">{editErrore}</p>}
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr key={u.id} className="group border-b border-cielo-100 transition last:border-0 hover:bg-cielo-50">
+                          <td className="px-4 py-2 text-cielo-800">{u.cognome || '—'}</td>
+                          <td className="px-4 py-2 text-cielo-800">{u.nome || '—'}</td>
+                          <td className="px-4 py-2 text-cielo-600">
+                            {u.email}
+                            {utente?.id === u.id && <span className="ml-2 text-xs text-cielo-400">(tu)</span>}
+                          </td>
+                          <td className="px-4 py-2">
+                            {u.ruolo === 'admin' ? (
+                              <span className="flex flex-wrap items-center gap-1">
+                                <span className="rounded-full bg-cielo-100 px-2 py-0.5 text-xs font-medium text-cielo-700">amministratore</span>
+                                {u.permanente && (
+                                  <span title="Amministratore permanente: non eliminabile né declassabile" className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                    permanente
+                                  </span>
+                                )}
                               </span>
+                            ) : (
+                              <span className="text-cielo-600">utente</span>
                             )}
-                          </span>
-                        ) : (
-                          <span className="text-cielo-600">utente</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-2">
-                        <div className="flex items-center justify-end gap-1 opacity-0 transition group-hover:opacity-100">
-                          {(admin || utente?.id === u.id) && (
-                            <button
-                              onClick={() => avviaModifica(u)}
-                              title="Modifica"
-                              className="rounded p-1.5 text-cielo-400 transition hover:bg-amber-50 hover:text-amber-600"
-                            >
-                              <IconaMatita />
-                            </button>
-                          )}
-                          {admin && (!u.permanente || utente?.id === u.id) && (
-                            <button
-                              onClick={() => {
-                                setResetErrore(null)
-                                setResetPwd({ nuova: '', ripeti: '' })
-                                setResetTarget(u)
-                              }}
-                              title="Reimposta password"
-                              className="rounded p-1.5 text-cielo-400 transition hover:bg-cielo-100 hover:text-cielo-700"
-                            >
-                              <IconaChiave />
-                            </button>
-                          )}
-                          {admin && utente?.id !== u.id && !u.permanente && (
-                            <button
-                              onClick={() => {
-                                setEliminaErrore(null)
-                                setEliminaTarget(u)
-                              }}
-                              title="Elimina"
-                              className="rounded p-1.5 text-cielo-400 transition hover:bg-red-50 hover:text-red-600"
-                            >
-                              <IconaCestino />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ),
-                )
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      )}
+                          </td>
+                          <td className="px-2 py-2">
+                            <div className="flex items-center justify-end gap-1 opacity-0 transition group-hover:opacity-100">
+                              {(admin || utente?.id === u.id) && (
+                                <button onClick={() => avviaModifica(u)} title="Modifica" className="rounded p-1.5 text-cielo-400 transition hover:bg-amber-50 hover:text-amber-600">
+                                  <IconaMatita />
+                                </button>
+                              )}
+                              {admin && (!u.permanente || utente?.id === u.id) && (
+                                <button
+                                  onClick={() => {
+                                    setResetErrore(null)
+                                    setResetPwd({ nuova: '', ripeti: '' })
+                                    setResetTarget(u)
+                                  }}
+                                  title="Reimposta password"
+                                  className="rounded p-1.5 text-cielo-400 transition hover:bg-cielo-100 hover:text-cielo-700"
+                                >
+                                  <IconaChiave />
+                                </button>
+                              )}
+                              {admin && utente?.id !== u.id && !u.permanente && (
+                                <button
+                                  onClick={() => {
+                                    setEliminaErrore(null)
+                                    setEliminaTarget(u)
+                                  }}
+                                  title="Elimina"
+                                  className="rounded p-1.5 text-cielo-400 transition hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <IconaCestino />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ),
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Pannello>
+        )}
+      </div>
 
-      {/* --- modale: conferma importazione database --- */}
+      {/* --- modale: conferma importazione --- */}
       {anteprima && (
         <Modale onChiudi={() => !importInCorso && setAnteprima(null)}>
           <div className="flex items-start gap-3">
@@ -593,8 +607,8 @@ export default function UtentiPage() {
               <h3 className="text-lg font-semibold text-cielo-800">Sostituire tutti gli immobili?</h3>
               <p className="mt-2 text-sm text-cielo-700">
                 Questa operazione <b>cancella tutti gli immobili presenti su questo computer</b> e li sostituisce
-                con quelli del file ricevuto. Non è annullabile (viene però salvata una copia di sicurezza
-                nella cartella <b>dati</b>).
+                con quelli del file ricevuto. Non è annullabile (viene però salvata una copia di sicurezza nella
+                cartella <b>dati</b>).
               </p>
             </div>
           </div>
@@ -623,12 +637,7 @@ export default function UtentiPage() {
           </p>
 
           <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-            <input
-              type="checkbox"
-              checked={hoCapito}
-              onChange={(e) => setHoCapito(e.target.checked)}
-              className="mt-0.5 accent-red-600"
-            />
+            <input type="checkbox" checked={hoCapito} onChange={(e) => setHoCapito(e.target.checked)} className="mt-0.5 accent-red-600" />
             <span>
               Ho capito che gli immobili presenti su questo computer verranno <b>cancellati</b> e sostituiti con
               quelli del file, e che l'operazione non si può annullare.
@@ -636,11 +645,7 @@ export default function UtentiPage() {
           </label>
 
           <div className="mt-5 flex justify-end gap-3">
-            <button
-              onClick={() => setAnteprima(null)}
-              disabled={importInCorso}
-              className="rounded-lg px-4 py-2 text-sm text-cielo-600 transition hover:bg-cielo-100"
-            >
+            <button onClick={() => setAnteprima(null)} disabled={importInCorso} className="rounded-lg px-4 py-2 text-sm text-cielo-600 transition hover:bg-cielo-100">
               Annulla
             </button>
             <button
@@ -676,10 +681,7 @@ export default function UtentiPage() {
             <button onClick={() => setResetTarget(null)} className="rounded-lg px-4 py-2 text-sm text-cielo-600 transition hover:bg-cielo-100">
               Annulla
             </button>
-            <button
-              onClick={() => void confermaReset()}
-              className="rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
-            >
+            <button onClick={() => void confermaReset()} className="rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600">
               Imposta password
             </button>
           </div>
@@ -699,16 +701,57 @@ export default function UtentiPage() {
             <button onClick={() => setEliminaTarget(null)} className="rounded-lg px-4 py-2 text-sm text-cielo-600 transition hover:bg-cielo-100">
               Annulla
             </button>
-            <button
-              onClick={() => void confermaElimina()}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
-            >
+            <button onClick={() => void confermaElimina()} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700">
               Elimina utente
             </button>
           </div>
         </Modale>
       )}
     </div>
+  )
+}
+
+/** Voce a fisarmonica: titolo e descrizione nell'intestazione cliccabile. */
+function Pannello({
+  id,
+  aperto,
+  onApri,
+  titolo,
+  descrizione,
+  children,
+}: {
+  id: string
+  aperto: string | null
+  onApri: (id: string) => void
+  titolo: string
+  descrizione: string
+  children: ReactNode
+}) {
+  const eAperto = aperto === id
+  return (
+    <section
+      className={`overflow-hidden rounded-xl border bg-panna transition ${
+        eAperto ? 'border-cielo-300 shadow-sm' : 'border-cielo-200'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => onApri(id)}
+        aria-expanded={eAperto}
+        className={`flex w-full items-start gap-3 px-5 py-4 text-left transition ${
+          eAperto ? 'bg-cielo-50' : 'hover:bg-cielo-50'
+        }`}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold text-cielo-800">{titolo}</span>
+          <span className="mt-0.5 block text-sm leading-snug text-cielo-600">{descrizione}</span>
+        </span>
+        <span className={`mt-1 shrink-0 text-cielo-500 transition-transform ${eAperto ? 'rotate-180' : ''}`}>
+          <IconaFreccia />
+        </span>
+      </button>
+      {eAperto && <div className="border-t border-cielo-200 px-5 py-5">{children}</div>}
+    </section>
   )
 }
 
@@ -732,13 +775,7 @@ function OpzioneMappa({
         scelta ? 'border-cielo-400 bg-cielo-50' : 'border-cielo-200 hover:bg-cielo-50'
       }`}
     >
-      <input
-        type="radio"
-        name="modo-mappa"
-        checked={scelta}
-        onChange={() => onScegli(valore)}
-        className="mt-0.5 accent-cielo-600"
-      />
+      <input type="radio" name="modo-mappa" checked={scelta} onChange={() => onScegli(valore)} className="mt-0.5 accent-cielo-600" />
       <span>
         <span className="block text-sm font-medium text-cielo-800">{titolo}</span>
         <span className="mt-0.5 block text-xs text-cielo-600">{desc}</span>
@@ -750,10 +787,7 @@ function OpzioneMappa({
 function Modale({ children, onChiudi }: { children: ReactNode; onChiudi: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-velo p-4" onClick={onChiudi}>
-      <div
-        className="w-full max-w-md rounded-2xl border border-cielo-200 bg-panna p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="w-full max-w-md rounded-2xl border border-cielo-200 bg-panna p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>
@@ -766,6 +800,14 @@ function Campo({ label, children }: { label: string; children: ReactNode }) {
       <span className="mb-1 block text-xs font-medium text-cielo-700">{label}</span>
       {children}
     </label>
+  )
+}
+
+function IconaFreccia() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
   )
 }
 

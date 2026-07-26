@@ -679,6 +679,82 @@ ipcMain.handle('db:applica-import', async (_ev, percorso) => {
   }
 })
 
+// ---------- collegamenti (desktop / menu Start) ----------
+// Nota: la barra delle applicazioni non è accessibile ai programmi da Windows 10
+// in poi (Microsoft l'ha chiusa): si può solo spiegare come fissare l'icona.
+
+function percorsoEseguibile() {
+  return process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
+}
+
+function percorsiCollegamenti() {
+  const nome = 'TR.A.V.I..lnk'
+  return {
+    desktop: path.join(app.getPath('desktop'), nome),
+    menuAvvio: path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', nome),
+  }
+}
+
+function creaCollegamento(destinazione) {
+  const bersaglio = percorsoEseguibile()
+  fs.mkdirSync(path.dirname(destinazione), { recursive: true })
+  const icona = path.join(path.dirname(bersaglio), 'TRAVI.ico')
+  const ok = shell.writeShortcutLink(destinazione, 'create', {
+    target: bersaglio,
+    cwd: path.dirname(bersaglio),
+    description: 'TR.A.V.I. - Tracciamento Attività e Verifica Immobili',
+    icon: fs.existsSync(icona) ? icona : bersaglio,
+    iconIndex: 0,
+  })
+  if (!ok) throw new Error('Windows non ha permesso di creare il collegamento.')
+}
+
+ipcMain.handle('collegamenti:stato', () =>
+  rispondi(() => {
+    const p = percorsiCollegamenti()
+    return {
+      desktop: fs.existsSync(p.desktop),
+      menuAvvio: fs.existsSync(p.menuAvvio),
+      // registriamo se la domanda iniziale è già stata posta
+      giaChiesto: Boolean(db.prepare("select v from app_meta where k = 'collegamenti_chiesti'").get()),
+    }
+  }),
+)
+
+ipcMain.handle('collegamenti:crea', (_ev, { desktop, menuAvvio }) =>
+  rispondi(() => {
+    const p = percorsiCollegamenti()
+    const fatti = []
+    if (desktop) {
+      creaCollegamento(p.desktop)
+      fatti.push('desktop')
+    }
+    if (menuAvvio) {
+      creaCollegamento(p.menuAvvio)
+      fatti.push('menu Start')
+    }
+    db.prepare("insert or replace into app_meta (k, v) values ('collegamenti_chiesti', 'si')").run()
+    registra(`collegamenti creati: ${fatti.join(', ') || 'nessuno'}`)
+    return { fatti }
+  }),
+)
+
+// L'utente ha scelto di non crearli: non lo chiediamo più all'avvio.
+ipcMain.handle('collegamenti:rimanda', () =>
+  rispondi(() => {
+    db.prepare("insert or replace into app_meta (k, v) values ('collegamenti_chiesti', 'si')").run()
+    return null
+  }),
+)
+
+// Apre la cartella dell'app: serve a fissare l'icona sulla barra a mano.
+ipcMain.handle('collegamenti:mostra-cartella', () =>
+  rispondi(() => {
+    shell.showItemInFolder(percorsoEseguibile())
+    return null
+  }),
+)
+
 // ---------- aggiornamenti ----------
 // Registro su file: serve a capire, anche a distanza, perché un computer non si
 // aggiorna (nessuna rete? release non trovata? download interrotto?).
