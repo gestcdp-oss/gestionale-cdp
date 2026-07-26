@@ -57,9 +57,14 @@ export default function SchedaImmobilePage() {
     <div className="space-y-6">
       {/* ---------- parte superiore: riepilogo ---------- */}
       <section className="rounded-2xl border border-cielo-200 bg-cielo-50 p-6">
-        <h1 className="text-xl font-bold text-cielo-800">
-          Scheda Immobile: <span className="text-cielo-600">{dati?.denominazione ?? immobile.denominazione}</span>
-        </h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-bold text-cielo-800">
+            Scheda Immobile: <span className="text-cielo-600">{dati?.denominazione ?? immobile.denominazione}</span>
+          </h1>
+          <span className="rounded-full border border-cielo-300 bg-panna px-2.5 py-1 font-mono text-xs text-cielo-700">
+            Asset {dati?.asset ?? immobile.asset}
+          </span>
+        </div>
 
         <div className="mt-5 grid gap-6 lg:grid-cols-[1fr_360px]">
           {/* dati */}
@@ -183,11 +188,25 @@ function Riquadro({ to, titolo, desc }: { to?: string; titolo: string; desc?: st
 
   const base = 'w-56 shrink-0 rounded-xl border p-4 transition'
   return to ? (
-    <Link to={to} className={`${base} border-cielo-200 bg-panna hover:border-cielo-400 hover:shadow-sm`}>
+    <Link
+      to={to}
+      className={`${base} group border-cielo-200 bg-panna hover:-translate-y-0.5 hover:border-cielo-400 hover:shadow-md`}
+    >
       {contenuto}
+      <span className="mt-2 flex items-center gap-1 text-xs font-medium text-cielo-500 opacity-0 transition group-hover:opacity-100">
+        Apri <IconaFrecciaDestra />
+      </span>
     </Link>
   ) : (
     <div className={`${base} cursor-default border-dashed border-cielo-200 bg-panna/60`}>{contenuto}</div>
+  )
+}
+
+function IconaFrecciaDestra() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
   )
 }
 

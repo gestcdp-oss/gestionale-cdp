@@ -1,7 +1,7 @@
 {
   "name": "travi-gest",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "TR.A.V.I. — Tracciamento Attività Verifica Immobili (app desktop locale)",
   "author": "TRAVI",
   "type": "module",
