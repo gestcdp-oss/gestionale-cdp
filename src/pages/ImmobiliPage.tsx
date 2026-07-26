@@ -247,7 +247,7 @@ export default function ImmobiliPage() {
               <input
                 value={form.asset}
                 onChange={(e) => setForm((f) => ({ ...f, asset: e.target.value }))}
-                placeholder="es. 0801"
+                placeholder="es. 1234"
                 className={inputCls}
               />
             </Campo>
@@ -255,7 +255,7 @@ export default function ImmobiliPage() {
               <input
                 value={form.denominazione}
                 onChange={(e) => setForm((f) => ({ ...f, denominazione: e.target.value }))}
-                placeholder="es. EX MT NAPOLI"
+                placeholder="es. IMMOBILE DI VIA ROMA"
                 className={inputCls}
               />
             </Campo>
@@ -264,7 +264,7 @@ export default function ImmobiliPage() {
                 list="portafogli"
                 value={form.portafoglio}
                 onChange={(e) => setForm((f) => ({ ...f, portafoglio: e.target.value }))}
-                placeholder="es. CDP Imm in liq"
+                placeholder="es. Portafoglio principale"
                 className={inputCls}
               />
             </Campo>
@@ -272,7 +272,7 @@ export default function ImmobiliPage() {
               <input
                 value={form.localizzazione}
                 onChange={(e) => setForm((f) => ({ ...f, localizzazione: e.target.value }))}
-                placeholder="es. Napoli — Campania"
+                placeholder="es. Roma, Via Cassia 100"
                 className={inputCls}
               />
             </Campo>

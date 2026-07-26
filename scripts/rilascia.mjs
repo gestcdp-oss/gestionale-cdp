@@ -70,21 +70,29 @@ if (!existsSync(EXE)) {
 // L'eseguibile finisce su un repository pubblico: non deve contenere NESSUN dato
 // aziendale. Qui si controlla il pacchetto prima di pubblicarlo.
 const ASAR = 'release/win-unpacked/resources/app.asar'
-if (existsSync(ASAR)) {
-  const contenuto = readFileSync(ASAR)
-  const spie = ['seed-immobili', 'EX MT NAPOLI', 'FINTECNA', 'CDP Imm in liq', 'marabelli.s@gmail.com']
-  const trovate = spie.filter((s) => contenuto.includes(Buffer.from(s, 'utf8')) && s !== 'marabelli.s@gmail.com')
-  // l'email dell'amministratore permanente è parte del codice: non è un dato aziendale
-  if (trovate.length) {
-    console.error(`\n⛔ PUBBLICAZIONE ANNULLATA: il pacchetto contiene dati (${trovate.join(', ')}).`)
-    console.error('   Chi scarica l\'eseguibile non deve ricevere alcun dato: correggere e riprovare.\n')
-    process.exit(1)
-  }
-  console.log('▶ Controllo dati nel pacchetto: nessun dato aziendale incluso ✔')
-} else {
+if (!existsSync(ASAR)) {
   console.error(`⚠️  Impossibile controllare ${ASAR}: pubblicazione annullata per prudenza.`)
   process.exit(1)
 }
+
+// 1) il file di precaricamento non deve proprio esserci
+const elenco = execSync(`npx asar list "${ASAR}"`, { encoding: 'utf8' })
+if (/seed-immobili\.json/i.test(elenco)) {
+  console.error('\n⛔ PUBBLICAZIONE ANNULLATA: il pacchetto contiene il file di precaricamento dati.\n')
+  process.exit(1)
+}
+
+// 2) nessuna traccia dei dati reali (denominazioni che esistono solo nell'archivio,
+//    mai nel codice: se compaiono, qualcosa è finito nel pacchetto)
+const contenuto = readFileSync(ASAR)
+const spie = ['UDINE DI TOPPO', 'SANT’AGATA DI ESARO', "SANT'AGATA DI ESARO", 'TERRENI LOCALITA', 'EX CARCERE PORTA NOLANA', 'FINTECNA']
+const trovate = spie.filter((s) => contenuto.includes(Buffer.from(s, 'utf8')))
+if (trovate.length) {
+  console.error(`\n⛔ PUBBLICAZIONE ANNULLATA: il pacchetto contiene dati reali (${trovate.join(', ')}).`)
+  console.error("   Chi scarica l'eseguibile non deve ricevere alcun dato: correggere e riprovare.\n")
+  process.exit(1)
+}
+console.log('▶ Controllo dati nel pacchetto: nessun dato aziendale incluso ✔')
 
 const binario = readFileSync(EXE)
 const sha256 = crypto.createHash('sha256').update(binario).digest('hex')
