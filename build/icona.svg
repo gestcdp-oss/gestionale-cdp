@@ -1,67 +1,43 @@
 <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Icona TR.A.V.I.">
-  <!-- Versione dell'icona pensata per il desktop: soggetto ingrandito, meno
-       dettagli fini e fondo pieno, così resta leggibile anche a 32 o 16 pixel. -->
+  <!-- Icona dell'applicazione: solo il soggetto riconoscibile (trave di legno con
+       caschetto da cantiere), grande e con pochi dettagli, così resta leggibile
+       anche a 32 o 16 pixel. La mascotte completa vive dentro l'app. -->
   <defs>
     <linearGradient id="fondo" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#FDFBF6"/>
-      <stop offset="1" stop-color="#EFE6D6"/>
+      <stop offset="1" stop-color="#ECE1CD"/>
     </linearGradient>
     <linearGradient id="legno" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#D9A566"/>
-      <stop offset="1" stop-color="#965C22"/>
+      <stop offset="0" stop-color="#DFAE72"/>
+      <stop offset="1" stop-color="#8F5620"/>
     </linearGradient>
     <linearGradient id="casco" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFD23F"/>
-      <stop offset="1" stop-color="#F2AE00"/>
+      <stop offset="0" stop-color="#FFD645"/>
+      <stop offset="1" stop-color="#EFA400"/>
     </linearGradient>
   </defs>
 
-  <rect x="0" y="0" width="256" height="256" rx="52" fill="url(#fondo)"/>
+  <rect x="0" y="0" width="256" height="256" rx="54" fill="url(#fondo)"/>
 
-  <g transform="translate(-40 -8) scale(1.17)">
-    <!-- BRACCIO SINISTRO -->
-    <path d="M86 122 Q62 132 56 154" fill="none" stroke="#3A2A1E" stroke-width="22" stroke-linecap="round"/>
-    <path d="M86 122 Q62 132 56 154" fill="none" stroke="#965C22" stroke-width="13" stroke-linecap="round"/>
-    <circle cx="55" cy="156" r="12" fill="#BE823E" stroke="#3A2A1E" stroke-width="6"/>
+  <!-- CORPO (trave) -->
+  <path d="M44 130 Q128 106 212 130 L212 198 Q212 220 190 220 L66 220 Q44 220 44 198 Z"
+        fill="url(#legno)" stroke="#3A2A1E" stroke-width="9" stroke-linejoin="round"/>
+  <!-- venature -->
+  <path d="M86 124 Q80 172 86 216" fill="none" stroke="#7C4A20" stroke-width="7" stroke-linecap="round" opacity="0.85"/>
+  <path d="M170 124 Q176 172 170 216" fill="none" stroke="#7C4A20" stroke-width="7" stroke-linecap="round" opacity="0.85"/>
 
-    <!-- GAMBE + SCARPONI -->
-    <rect x="101" y="150" width="17" height="42" rx="8" fill="#965C22" stroke="#3A2A1E" stroke-width="6"/>
-    <rect x="137" y="150" width="17" height="42" rx="8" fill="#965C22" stroke="#3A2A1E" stroke-width="6"/>
-    <rect x="89" y="183" width="34" height="19" rx="8" fill="#463628" stroke="#3A2A1E" stroke-width="6"/>
-    <rect x="132" y="183" width="34" height="19" rx="8" fill="#463628" stroke="#3A2A1E" stroke-width="6"/>
+  <!-- OCCHI -->
+  <ellipse cx="103" cy="162" rx="20" ry="21" fill="#FFFFFF" stroke="#3A2A1E" stroke-width="8"/>
+  <ellipse cx="153" cy="162" rx="20" ry="21" fill="#FFFFFF" stroke="#3A2A1E" stroke-width="8"/>
+  <circle cx="107" cy="165" r="9" fill="#2B2620"/>
+  <circle cx="157" cy="165" r="9" fill="#2B2620"/>
 
-    <!-- CORPO (trave) -->
-    <path d="M72 100 Q128 74 184 100 L184 150 Q184 168 166 168 L90 168 Q72 168 72 150 Z"
-          fill="url(#legno)" stroke="#3A2A1E" stroke-width="6" stroke-linejoin="round"/>
-    <path d="M110 97 Q106 132 110 165" fill="none" stroke="#7C4A20" stroke-width="5" stroke-linecap="round"/>
-    <path d="M146 97 Q150 132 146 165" fill="none" stroke="#7C4A20" stroke-width="5" stroke-linecap="round"/>
+  <!-- SORRISO -->
+  <path d="M106 195 Q128 211 150 195" fill="none" stroke="#3A2A1E" stroke-width="8" stroke-linecap="round"/>
 
-    <!-- OCCHI -->
-    <ellipse cx="112" cy="130" rx="14" ry="15" fill="#FFFFFF" stroke="#3A2A1E" stroke-width="5"/>
-    <ellipse cx="145" cy="130" rx="14" ry="15" fill="#FFFFFF" stroke="#3A2A1E" stroke-width="5"/>
-    <circle cx="115" cy="132" r="6.5" fill="#2B2620"/>
-    <circle cx="148" cy="132" r="6.5" fill="#2B2620"/>
-
-    <!-- SORRISO -->
-    <path d="M114 153 Q128 165 142 153" fill="none" stroke="#3A2A1E" stroke-width="5.5" stroke-linecap="round"/>
-
-    <!-- CASCHETTO -->
-    <path d="M80 96 Q80 48 128 46 Q176 48 176 96 Z" fill="url(#casco)" stroke="#3A2A1E" stroke-width="6" stroke-linejoin="round"/>
-    <rect x="60" y="93" width="136" height="14" rx="7" fill="url(#casco)" stroke="#3A2A1E" stroke-width="6"/>
-    <path d="M128 50 L128 93" stroke="#E0A100" stroke-width="6" fill="none" stroke-linecap="round"/>
-
-    <!-- BRACCIO DESTRO -->
-    <path d="M176 120 Q198 110 206 88" fill="none" stroke="#3A2A1E" stroke-width="22" stroke-linecap="round"/>
-    <path d="M176 120 Q198 110 206 88" fill="none" stroke="#965C22" stroke-width="13" stroke-linecap="round"/>
-
-    <!-- PLANIMETRIA -->
-    <g transform="rotate(-14 214 66)">
-      <rect x="193" y="38" width="46" height="56" rx="4" fill="#EAF2FB" stroke="#2F6FB3" stroke-width="6"/>
-      <rect x="202" y="49" width="28" height="34" fill="none" stroke="#3B7DD8" stroke-width="4"/>
-      <path d="M202 68 H217" stroke="#3B7DD8" stroke-width="4"/>
-    </g>
-
-    <!-- MANO DESTRA -->
-    <circle cx="206" cy="88" r="12" fill="#BE823E" stroke="#3A2A1E" stroke-width="6"/>
-  </g>
+  <!-- CASCHETTO -->
+  <path d="M58 116 Q58 40 128 38 Q198 40 198 116 Z" fill="url(#casco)" stroke="#3A2A1E" stroke-width="9" stroke-linejoin="round"/>
+  <rect x="30" y="110" width="196" height="22" rx="11" fill="url(#casco)" stroke="#3A2A1E" stroke-width="9"/>
+  <path d="M128 44 L128 110" stroke="#DA9A00" stroke-width="8" stroke-linecap="round"/>
+  <path d="M78 106 Q82 64 112 48" fill="none" stroke="#FFE894" stroke-width="9" stroke-linecap="round" opacity="0.9"/>
 </svg>

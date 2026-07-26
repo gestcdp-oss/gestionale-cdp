@@ -738,7 +738,18 @@ async function installaAggiornamento() {
 }
 
 ipcMain.handle('agg:stato', () => ({ data: statoAgg, error: null }))
-ipcMain.handle('agg:controlla', () => rispondi(() => controllaAggiornamenti()))
+
+// Nota: l'handler DEVE attendere il risultato e restituire solo valori semplici.
+// (Restituire una Promise attraverso il canale la rende non trasferibile e la
+// chiamata fallisce: l'avvio resterebbe appeso.)
+ipcMain.handle('agg:controlla', async () => {
+  try {
+    const info = await controllaAggiornamenti()
+    return { data: info ? { versione: info.versione, note: info.note } : null, error: null }
+  } catch (e) {
+    return { data: null, error: { message: String((e && e.message) || e) } }
+  }
+})
 ipcMain.handle('agg:installa', async () => {
   try {
     await installaAggiornamento()

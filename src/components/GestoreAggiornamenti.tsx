@@ -30,41 +30,56 @@ export default function GestoreAggiornamenti({ children }: { children: ReactNode
   // resta in ascolto dei cambi di stato (controllo, avanzamento, errori)
   useEffect(() => dbLocale.aggiornamenti.osserva(setStato), [])
 
-  // sequenza di avvio: controlla → se c'è, installa subito
+  // sequenza di avvio: controlla → se c'è, installa subito.
+  // Qualunque cosa vada storta, si entra comunque nel programma.
   useEffect(() => {
     let vivo = true
+    let installazioneAvviata = false
+
+    // rete di sicurezza: se dopo questo tempo non è successo nulla, si entra
+    const salvagente = window.setTimeout(() => {
+      if (vivo && !installazioneAvviata) setAvvioConcluso(true)
+    }, ATTESA_MASSIMA_CONTROLLO + 5000)
+
     async function avvio() {
-      const { data } = await dbLocale.aggiornamenti.stato()
-      if (data) setStato(data)
-      if (!data?.supportato) {
-        if (vivo) setAvvioConcluso(true)
-        return
+      try {
+        const { data } = await dbLocale.aggiornamenti.stato()
+        if (data) setStato(data)
+        if (!data?.supportato) return
+
+        // il controllo non può far aspettare all'infinito
+        const controllo = dbLocale.aggiornamenti.controlla().catch(() => null)
+        const scaduto = new Promise<null>((r) => setTimeout(() => r(null), ATTESA_MASSIMA_CONTROLLO))
+        const esito = await Promise.race([controllo, scaduto])
+        if (!vivo) return
+
+        const trovato = (esito as { data?: { versione?: string } | null } | null)?.data ?? null
+        if (!trovato?.versione) return
+
+        // aggiornamento trovato: si installa subito (l'app si riavvia da sola)
+        installazioneAvviata = true
+        const inst = await dbLocale.aggiornamenti.installa().catch((e: unknown) => ({
+          data: null,
+          error: { message: String(e) },
+        }))
+        if (!vivo) return
+        if (inst?.error) {
+          installazioneAvviata = false
+          setErroreAvvio(inst.error.message)
+        }
+        // se è andato a buon fine l'app si chiude da sola
+      } catch (e) {
+        if (vivo) setErroreAvvio(String(e))
+      } finally {
+        // si entra sempre, tranne quando l'app sta per riavviarsi da sola
+        if (vivo && !installazioneAvviata) setAvvioConcluso(true)
       }
-      // il controllo non può far aspettare all'infinito
-      const controllo = dbLocale.aggiornamenti.controlla()
-      const scaduto = new Promise((r) => setTimeout(() => r('scaduto'), ATTESA_MASSIMA_CONTROLLO))
-      const esito = await Promise.race([controllo, scaduto])
-      if (!vivo) return
-      const trovato =
-        esito !== 'scaduto' && (esito as { data?: unknown })?.data
-          ? ((esito as { data: unknown }).data as { versione?: string } | null)
-          : null
-      if (!trovato) {
-        setAvvioConcluso(true)
-        return
-      }
-      // aggiornamento trovato: si installa subito (l'app si riavvia da sola)
-      const inst = await dbLocale.aggiornamenti.installa()
-      if (!vivo) return
-      if (inst.error) {
-        setErroreAvvio(inst.error.message)
-        setAvvioConcluso(true)
-      }
-      // se è andato a buon fine l'app si chiude da sola
     }
+
     void avvio()
     return () => {
       vivo = false
+      window.clearTimeout(salvagente)
     }
   }, [])
 
