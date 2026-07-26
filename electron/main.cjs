@@ -86,7 +86,10 @@ function apriDb(nomeFile = 'travi.db') {
   seminaSeServe()
 }
 
-// Primo avvio: precarica gli immobili dal seed (una volta sola).
+// Primo avvio: se è presente un file di precaricamento lo applica (una volta sola).
+// ATTENZIONE: il file NON viene incluso nell'eseguibile distribuito (vedi package.json,
+// "!electron/seed-immobili.json"): chi scarica l'app parte da un archivio VUOTO.
+// I dati si trasferiscono tra installazioni con Esporta/Importa database.
 function seminaSeServe() {
   const fatto = db.prepare("select v from app_meta where k = 'seed_immobili'").get()
   if (fatto) return
@@ -527,6 +530,146 @@ ipcMain.handle('mappa:apri', (_ev, { query, modo }) =>
     return null
   }),
 )
+
+// ---------- esporta / importa il database ----------
+// Serve a passare i dati a un collega: si esporta un file, lui lo importa e il
+// suo archivio viene sostituito da quello ricevuto.
+
+const TABELLE_ATTESE = ['immobili', 'utenti', 'preferenze', 'app_meta']
+
+function riavviaApp() {
+  const portable = process.env.PORTABLE_EXECUTABLE_FILE
+  if (portable) {
+    const { spawn } = require('node:child_process')
+    const p = spawn(portable, [], { detached: true, stdio: 'ignore', cwd: path.dirname(portable) })
+    p.unref()
+  } else {
+    app.relaunch()
+  }
+  app.exit(0)
+}
+
+ipcMain.handle('db:esporta', async () => {
+  try {
+    const s = richiediSessione()
+    const oggi = new Date().toISOString().slice(0, 10)
+    const scelta = await dialog.showSaveDialog({
+      title: 'Esporta database TR.A.V.I.',
+      defaultPath: `TRAVI-database-${oggi}.travidb`,
+      filters: [{ name: 'Database TR.A.V.I.', extensions: ['travidb'] }],
+    })
+    if (scelta.canceled || !scelta.filePath) return { data: null, error: null }
+
+    // marchia il file con versione e provenienza (serve al controllo in import)
+    const meta = db.prepare('insert or replace into app_meta (k, v) values (?, ?)')
+    meta.run('versione_app', app.getVersion())
+    meta.run('esportato_il', new Date().toISOString())
+    meta.run('esportato_da', s.email)
+
+    await db.backup(scelta.filePath) // copia consistente anche con l'app aperta
+    return { data: { percorso: scelta.filePath }, error: null }
+  } catch (e) {
+    return { data: null, error: { message: String((e && e.message) || e) } }
+  }
+})
+
+// Passo 1: sceglie il file e lo verifica, senza toccare nulla.
+ipcMain.handle('db:verifica-import', async () => {
+  try {
+    richiediAdmin()
+    const scelta = await dialog.showOpenDialog({
+      title: 'Importa database TR.A.V.I.',
+      properties: ['openFile'],
+      filters: [{ name: 'Database TR.A.V.I.', extensions: ['travidb', 'db'] }],
+    })
+    if (scelta.canceled || !scelta.filePaths[0]) return { data: null, error: null }
+    const percorso = scelta.filePaths[0]
+
+    const Database = require('better-sqlite3')
+    let prova
+    try {
+      prova = new Database(percorso, { readonly: true, fileMustExist: true })
+    } catch {
+      throw new Error('Il file non è un database TR.A.V.I. valido.')
+    }
+    try {
+      const tabelle = prova
+        .prepare("select name from sqlite_master where type = 'table'")
+        .all()
+        .map((r) => r.name)
+      for (const attesa of TABELLE_ATTESE) {
+        if (!tabelle.includes(attesa)) throw new Error('Il file non è un database TR.A.V.I. valido.')
+      }
+      const riga = prova.prepare("select v from app_meta where k = 'versione_app'").get()
+      const versioneFile = riga ? String(riga.v) : ''
+      if (versioneFile !== app.getVersion()) {
+        throw new Error(
+          `Il file è stato esportato con la versione ${versioneFile || 'sconosciuta'}, ` +
+            `mentre qui è installata la ${app.getVersion()}. Aggiornate entrambi i programmi alla stessa versione e riprovate.`,
+        )
+      }
+      const immobili = prova.prepare('select count(*) as n from immobili').get().n
+      const utenti = prova.prepare('select count(*) as n from utenti').get().n
+      const daRiga = prova.prepare("select v from app_meta where k = 'esportato_da'").get()
+      const ilRiga = prova.prepare("select v from app_meta where k = 'esportato_il'").get()
+      return {
+        data: {
+          percorso,
+          versione: versioneFile,
+          immobili,
+          utenti,
+          esportatoDa: daRiga ? String(daRiga.v) : '',
+          esportatoIl: ilRiga ? String(ilRiga.v) : '',
+          // quanti dati verrebbero sostituiti
+          immobiliAttuali: db.prepare('select count(*) as n from immobili').get().n,
+          utentiAttuali: db.prepare('select count(*) as n from utenti').get().n,
+        },
+        error: null,
+      }
+    } finally {
+      prova.close()
+    }
+  } catch (e) {
+    return { data: null, error: { message: String((e && e.message) || e) } }
+  }
+})
+
+// Passo 2: sostituisce davvero l'archivio (con copia di sicurezza) e riavvia.
+ipcMain.handle('db:applica-import', async (_ev, percorso) => {
+  try {
+    richiediAdmin()
+    if (!percorso || !fs.existsSync(percorso)) throw new Error('File non trovato.')
+    const dir = cartellaDati()
+    const attuale = path.join(dir, 'travi.db')
+    const marca = new Date().toISOString().replace(/[:.]/g, '-')
+    const copiaSicurezza = path.join(dir, `backup-prima-import-${marca}.db`)
+
+    // copia di sicurezza dell'archivio esistente PRIMA di sostituirlo
+    await db.backup(copiaSicurezza)
+    db.close()
+    db = null
+
+    fs.copyFileSync(percorso, attuale)
+    for (const suffisso of ['-wal', '-shm']) {
+      try {
+        fs.unlinkSync(attuale + suffisso)
+      } catch {
+        /* non esiste: ok */
+      }
+    }
+    sessione = null
+    setTimeout(riavviaApp, 600)
+    return { data: { copiaSicurezza }, error: null }
+  } catch (e) {
+    // se qualcosa è andato storto riapriamo l'archivio esistente
+    try {
+      if (!db) apriDb()
+    } catch {
+      /* ignora */
+    }
+    return { data: null, error: { message: String((e && e.message) || e) } }
+  }
+})
 
 // ---------- aggiornamenti ----------
 // Stato condiviso con l'interfaccia: fase, avanzamento, versione trovata.

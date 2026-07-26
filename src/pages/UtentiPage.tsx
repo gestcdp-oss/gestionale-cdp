@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { dbLocale } from '../lib/db'
-import type { Utente } from '../lib/db'
+import type { Utente, AnteprimaImport } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
 import { usePreferenze } from '../hooks/usePreferenze'
 
@@ -35,6 +35,12 @@ export default function UtentiPage() {
   const [nuovo, setNuovo] = useState(NUOVO)
   const [nuovoErrore, setNuovoErrore] = useState<string | null>(null)
   const [nuovoOk, setNuovoOk] = useState<string | null>(null)
+
+  // esporta / importa database
+  const [dbMessaggio, setDbMessaggio] = useState<string | null>(null)
+  const [dbErrore, setDbErrore] = useState<string | null>(null)
+  const [anteprima, setAnteprima] = useState<AnteprimaImport | null>(null)
+  const [importInCorso, setImportInCorso] = useState(false)
 
   // modifica inline + azioni sugli altri utenti
   const [editId, setEditId] = useState<string | null>(null)
@@ -131,6 +137,42 @@ export default function UtentiPage() {
     setNuovoOk(`Utente "${nuovo.email.trim()}" creato.`)
     setNuovo(NUOVO)
     void carica()
+  }
+
+  // ---- esporta / importa database ----
+  async function esportaDb() {
+    setDbErrore(null)
+    setDbMessaggio(null)
+    const { data, error } = await dbLocale.database.esporta()
+    if (error) {
+      setDbErrore(error.message)
+      return
+    }
+    if (data) setDbMessaggio(`Database esportato in: ${data.percorso}`)
+  }
+
+  async function scegliFileImport() {
+    setDbErrore(null)
+    setDbMessaggio(null)
+    const { data, error } = await dbLocale.database.verificaImport()
+    if (error) {
+      setDbErrore(error.message)
+      return
+    }
+    if (data) setAnteprima(data)
+  }
+
+  async function confermaImport() {
+    if (!anteprima) return
+    setImportInCorso(true)
+    const { error } = await dbLocale.database.applicaImport(anteprima.percorso)
+    if (error) {
+      setImportInCorso(false)
+      setAnteprima(null)
+      setDbErrore(error.message)
+      return
+    }
+    // riuscito: il programma si riavvia da solo
   }
 
   // ---- modifica altri utenti ----
@@ -298,6 +340,46 @@ export default function UtentiPage() {
             Nota: aprire la mappa invia la localizzazione dell'immobile a Google. È l'unica funzione dell'app
             che usa internet; tutti gli altri dati restano su questo computer.
           </p>
+        </div>
+      </section>
+
+      {/* --- database: esporta / importa --- */}
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">Database</h2>
+        <div className="mt-3 max-w-2xl rounded-xl border border-cielo-200 bg-panna p-5">
+          <p className="text-sm text-cielo-600">
+            Serve a passare i dati a un collega: tu esporti un file, lui lo importa nella sua copia del
+            programma. Entrambi dovete avere la <b>stessa versione</b> di TR.A.V.I.
+          </p>
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              onClick={() => void esportaDb()}
+              className="flex items-center gap-2 rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
+            >
+              <IconaEsporta />
+              Export DB
+            </button>
+            {admin && (
+              <button
+                onClick={() => void scegliFileImport()}
+                className="flex items-center gap-2 rounded-lg border border-cielo-300 px-4 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50"
+              >
+                <IconaImporta />
+                Import DB
+              </button>
+            )}
+          </div>
+
+          {!admin && (
+            <p className="mt-3 text-xs text-cielo-500">
+              L'importazione è riservata agli amministratori: sostituisce l'intero archivio.
+            </p>
+          )}
+          {dbMessaggio && (
+            <p className="mt-4 break-all rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{dbMessaggio}</p>
+          )}
+          {dbErrore && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{dbErrore}</p>}
         </div>
       </section>
 
@@ -490,6 +572,67 @@ export default function UtentiPage() {
       </section>
       )}
 
+      {/* --- modale: conferma importazione database --- */}
+      {anteprima && (
+        <Modale onChiudi={() => !importInCorso && setAnteprima(null)}>
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">
+              <IconaAvviso />
+            </span>
+            <div>
+              <h3 className="text-lg font-semibold text-cielo-800">Sostituire l'intero archivio?</h3>
+              <p className="mt-2 text-sm text-cielo-700">
+                Questa operazione <b>cancella completamente il database attuale</b> e lo ricrea con quello del
+                file ricevuto. L'operazione non è annullabile (viene però salvata una copia di sicurezza nella
+                cartella <b>dati</b>).
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-lg border border-cielo-200 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-cielo-500">Ora hai</p>
+              <p className="mt-1 text-cielo-800">{anteprima.immobiliAttuali} immobili</p>
+              <p className="text-cielo-800">{anteprima.utentiAttuali} utenti</p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Dopo l'import</p>
+              <p className="mt-1 text-emerald-800">{anteprima.immobili} immobili</p>
+              <p className="text-emerald-800">{anteprima.utenti} utenti</p>
+            </div>
+          </div>
+
+          <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
+            Vengono sostituiti anche gli <b>account di accesso</b>: dopo l'importazione dovrai entrare con le
+            credenziali valide nel database ricevuto.
+            {anteprima.esportatoDa && (
+              <>
+                <br />
+                File esportato da <b>{anteprima.esportatoDa}</b>
+                {anteprima.esportatoIl ? ` il ${new Date(anteprima.esportatoIl).toLocaleString('it-IT')}` : ''}.
+              </>
+            )}
+          </p>
+
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              onClick={() => setAnteprima(null)}
+              disabled={importInCorso}
+              className="rounded-lg px-4 py-2 text-sm text-cielo-600 transition hover:bg-cielo-100"
+            >
+              Annulla
+            </button>
+            <button
+              onClick={() => void confermaImport()}
+              disabled={importInCorso}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50"
+            >
+              {importInCorso ? 'Importazione…' : 'Sostituisci e riavvia'}
+            </button>
+          </div>
+        </Modale>
+      )}
+
       {/* --- modale: reimposta password --- */}
       {resetTarget && (
         <Modale onChiudi={() => setResetTarget(null)}>
@@ -601,6 +744,35 @@ function Campo({ label, children }: { label: string; children: ReactNode }) {
       <span className="mb-1 block text-xs font-medium text-cielo-700">{label}</span>
       {children}
     </label>
+  )
+}
+
+function IconaEsporta() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M12 15V3" />
+    </svg>
+  )
+}
+
+function IconaImporta() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7 8l5-5 5 5" />
+      <path d="M12 3v12" />
+    </svg>
+  )
+}
+
+function IconaAvviso() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <path d="M12 9v4M12 17h.01" />
+    </svg>
   )
 }
 

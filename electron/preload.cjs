@@ -29,6 +29,11 @@ contextBridge.exposeInMainWorld('travi', {
   mappa: {
     apri: (query, modo) => ipcRenderer.invoke('mappa:apri', { query, modo }),
   },
+  database: {
+    esporta: () => ipcRenderer.invoke('db:esporta'),
+    verificaImport: () => ipcRenderer.invoke('db:verifica-import'),
+    applicaImport: (percorso) => ipcRenderer.invoke('db:applica-import', percorso),
+  },
   aggiornamenti: {
     stato: () => ipcRenderer.invoke('agg:stato'),
     controlla: () => ipcRenderer.invoke('agg:controlla'),

@@ -59,6 +59,11 @@ type ApiTravi = {
   mappa: {
     apri(query: string, modo: 'finestra' | 'browser'): Promise<RispostaDb<null>>
   }
+  database: {
+    esporta(): Promise<RispostaDb<{ percorso: string } | null>>
+    verificaImport(): Promise<RispostaDb<AnteprimaImport | null>>
+    applicaImport(percorso: string): Promise<RispostaDb<{ copiaSicurezza: string }>>
+  }
   aggiornamenti: {
     stato(): Promise<RispostaDb<StatoAggiornamento>>
     controlla(): Promise<RispostaDb<unknown>>
@@ -66,6 +71,17 @@ type ApiTravi = {
     osserva(callback: (stato: StatoAggiornamento) => void): () => void
   }
   versione(): Promise<string>
+}
+
+export type AnteprimaImport = {
+  percorso: string
+  versione: string
+  immobili: number
+  utenti: number
+  esportatoDa: string
+  esportatoIl: string
+  immobiliAttuali: number
+  utentiAttuali: number
 }
 
 export type FaseAggiornamento =
@@ -108,6 +124,7 @@ const stub: ApiTravi = {
   preferenze: { tutte: async () => ({ data: {}, error: ERRORE_AMBIENTE }), imposta: ko },
   immobili: { list: async () => ({ data: [], error: ERRORE_AMBIENTE }), insert: ko, update: ko, remove: ko },
   mappa: { apri: ko },
+  database: { esporta: ko, verificaImport: ko, applicaImport: ko },
   aggiornamenti: {
     stato: async () => ({
       data: {

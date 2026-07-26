@@ -1,7 +1,7 @@
 {
   "name": "travi-gest",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "TR.A.V.I. — Tracciamento Attività Verifica Immobili (app desktop locale)",
   "author": "TRAVI",
   "type": "module",
@@ -51,7 +51,8 @@
     },
     "files": [
       "dist/**",
-      "electron/**"
+      "electron/**",
+      "!electron/seed-immobili.json"
     ],
     "asarUnpack": [
       "node_modules/better-sqlite3/**"

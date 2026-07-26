@@ -66,6 +66,26 @@ if (!existsSync(EXE)) {
   process.exit(1)
 }
 
+// ---------------------------------------------------------------- controllo dati
+// L'eseguibile finisce su un repository pubblico: non deve contenere NESSUN dato
+// aziendale. Qui si controlla il pacchetto prima di pubblicarlo.
+const ASAR = 'release/win-unpacked/resources/app.asar'
+if (existsSync(ASAR)) {
+  const contenuto = readFileSync(ASAR)
+  const spie = ['seed-immobili', 'EX MT NAPOLI', 'FINTECNA', 'CDP Imm in liq', 'marabelli.s@gmail.com']
+  const trovate = spie.filter((s) => contenuto.includes(Buffer.from(s, 'utf8')) && s !== 'marabelli.s@gmail.com')
+  // l'email dell'amministratore permanente è parte del codice: non è un dato aziendale
+  if (trovate.length) {
+    console.error(`\n⛔ PUBBLICAZIONE ANNULLATA: il pacchetto contiene dati (${trovate.join(', ')}).`)
+    console.error('   Chi scarica l\'eseguibile non deve ricevere alcun dato: correggere e riprovare.\n')
+    process.exit(1)
+  }
+  console.log('▶ Controllo dati nel pacchetto: nessun dato aziendale incluso ✔')
+} else {
+  console.error(`⚠️  Impossibile controllare ${ASAR}: pubblicazione annullata per prudenza.`)
+  process.exit(1)
+}
+
 const binario = readFileSync(EXE)
 const sha256 = crypto.createHash('sha256').update(binario).digest('hex')
 const manifesto = {
