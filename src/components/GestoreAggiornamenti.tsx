@@ -1,7 +1,22 @@
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { dbLocale } from '../lib/db'
 import type { StatoAggiornamento } from '../lib/db'
+
+// Permette al resto dell'app (es. il numero di versione nell'intestazione) di
+// chiedere un controllo immediato e di sapere com'è andato.
+type ContestoAgg = {
+  stato: StatoAggiornamento
+  controlloManuale: 'fermo' | 'incorso' | 'aggiornato'
+  controllaOra: () => Promise<void>
+}
+const AggCtx = createContext<ContestoAgg | undefined>(undefined)
+
+export function useAggiornamenti(): ContestoAgg {
+  const c = useContext(AggCtx)
+  if (!c) throw new Error('useAggiornamenti va usato dentro <GestoreAggiornamenti>')
+  return c
+}
 
 const LOGO = './logo.svg'
 // Oltre questo tempo si entra comunque nel programma: se GitHub non risponde,
@@ -26,6 +41,17 @@ export default function GestoreAggiornamenti({ children }: { children: ReactNode
   const [avvioConcluso, setAvvioConcluso] = useState(false)
   const [rimandato, setRimandato] = useState(false)
   const [erroreAvvio, setErroreAvvio] = useState<string | null>(null)
+  const [controlloManuale, setControlloManuale] = useState<'fermo' | 'incorso' | 'aggiornato'>('fermo')
+
+  /** Controllo su richiesta (dal numero di versione nell'intestazione). */
+  async function controllaOra() {
+    setControlloManuale('incorso')
+    setRimandato(false)
+    const esito = await dbLocale.aggiornamenti.controlla().catch(() => null)
+    const trovato = (esito as { data?: { versione?: string } | null } | null)?.data ?? null
+    setControlloManuale(trovato?.versione ? 'fermo' : 'aggiornato')
+    if (!trovato?.versione) window.setTimeout(() => setControlloManuale('fermo'), 4000)
+  }
 
   // resta in ascolto dei cambi di stato (controllo, avanzamento, errori)
   useEffect(() => dbLocale.aggiornamenti.osserva(setStato), [])
@@ -130,7 +156,7 @@ export default function GestoreAggiornamenti({ children }: { children: ReactNode
   }
 
   return (
-    <>
+    <AggCtx.Provider value={{ stato, controlloManuale, controllaOra }}>
       {/* avviso se l'aggiornamento all'avvio non è riuscito: si lavora comunque */}
       {erroreAvvio && (
         <div className="fixed inset-x-0 top-0 z-50 flex justify-center p-2">
@@ -190,7 +216,7 @@ export default function GestoreAggiornamenti({ children }: { children: ReactNode
           <p className="mt-2 text-xs text-cielo-500">{stato.percentuale}%</p>
         </div>
       )}
-    </>
+    </AggCtx.Provider>
   )
 }
 

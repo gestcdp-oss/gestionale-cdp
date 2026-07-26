@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { usePreferenze } from '../hooks/usePreferenze'
 import { useSelezione } from '../hooks/useSelezione'
+import { useAggiornamenti } from './GestoreAggiornamenti'
 import { TEMI } from '../lib/temi'
 
 const LOGO = './logo.svg'
@@ -24,6 +25,7 @@ export default function Layout() {
   const { utente, esci } = useAuth()
   const { immobile, seleziona } = useSelezione()
   const { tema, impostaTema } = usePreferenze()
+  const { controlloManuale, controllaOra } = useAggiornamenti()
 
   return (
     // Layout a schermo fisso: header e menù restano sempre visibili,
@@ -89,7 +91,19 @@ export default function Layout() {
             ))}
           </div>
 
-          <span className="text-xs text-cielo-400">v{__APP_VERSION__}</span>
+          {/* il numero di versione è cliccabile: verifica subito se c'è un aggiornamento */}
+          <button
+            onClick={() => void controllaOra()}
+            disabled={controlloManuale === 'incorso'}
+            title="Clicca per controllare se è disponibile un aggiornamento"
+            className="rounded px-1.5 py-1 text-xs text-cielo-400 transition hover:bg-cielo-50 hover:text-cielo-600"
+          >
+            {controlloManuale === 'incorso'
+              ? 'controllo…'
+              : controlloManuale === 'aggiornato'
+                ? 'già aggiornato ✓'
+                : `v${__APP_VERSION__}`}
+          </button>
 
           <span className="hidden text-cielo-700 md:inline">
             {[utente?.nome, utente?.cognome].filter(Boolean).join(' ') || utente?.email}
