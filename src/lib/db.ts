@@ -60,9 +60,9 @@ type ApiTravi = {
     apri(query: string, modo: 'finestra' | 'browser'): Promise<RispostaDb<null>>
   }
   database: {
-    esporta(): Promise<RispostaDb<{ percorso: string } | null>>
+    esporta(): Promise<RispostaDb<{ percorso: string; immobili: number } | null>>
     verificaImport(): Promise<RispostaDb<AnteprimaImport | null>>
-    applicaImport(percorso: string): Promise<RispostaDb<{ copiaSicurezza: string }>>
+    applicaImport(percorso: string): Promise<RispostaDb<{ copiaSicurezza: string; immobili: number }>>
   }
   aggiornamenti: {
     stato(): Promise<RispostaDb<StatoAggiornamento>>
@@ -77,11 +77,9 @@ export type AnteprimaImport = {
   percorso: string
   versione: string
   immobili: number
-  utenti: number
   esportatoDa: string
   esportatoIl: string
   immobiliAttuali: number
-  utentiAttuali: number
 }
 
 export type FaseAggiornamento =

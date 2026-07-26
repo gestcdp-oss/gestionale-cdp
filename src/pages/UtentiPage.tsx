@@ -149,7 +149,7 @@ export default function UtentiPage() {
       setDbErrore(error.message)
       return
     }
-    if (data) setDbMessaggio(`Database esportato in: ${data.percorso}`)
+    if (data) setDbMessaggio(`Esportati ${data.immobili} immobili in: ${data.percorso}`)
   }
 
   async function scegliFileImport() {
@@ -169,14 +169,16 @@ export default function UtentiPage() {
   async function confermaImport() {
     if (!anteprima) return
     setImportInCorso(true)
-    const { error } = await dbLocale.database.applicaImport(anteprima.percorso)
+    const { data, error } = await dbLocale.database.applicaImport(anteprima.percorso)
+    setImportInCorso(false)
+    setAnteprima(null)
     if (error) {
-      setImportInCorso(false)
-      setAnteprima(null)
       setDbErrore(error.message)
       return
     }
-    // riuscito: il programma si riavvia da solo
+    setDbMessaggio(
+      `Importati ${data?.immobili ?? 0} immobili. Il tuo accesso non è cambiato: continui con il tuo utente.`,
+    )
   }
 
   // ---- modifica altri utenti ----
@@ -352,9 +354,9 @@ export default function UtentiPage() {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">Database</h2>
         <div className="mt-3 max-w-2xl rounded-xl border border-cielo-200 bg-panna p-5">
           <p className="text-sm text-cielo-600">
-            Ogni copia del programma ha il <b>proprio archivio</b>, sul proprio computer. Per passare i dati a un
-            collega: tu esporti un file, lui lo importa. Entrambi dovete avere la <b>stessa versione</b> di
-            TR.A.V.I.
+            Ogni copia del programma ha il <b>proprio archivio</b>, sul proprio computer. Per passare gli
+            immobili a un collega: tu esporti un file, lui lo importa e continua a lavorarci{' '}
+            <b>con la sua utenza</b>. Entrambi dovete avere la <b>stessa versione</b> di TR.A.V.I.
           </p>
 
           <div className="mt-4 flex flex-wrap gap-3">
@@ -379,9 +381,9 @@ export default function UtentiPage() {
               <IconaAvviso />
             </span>
             <span>
-              <b>Attenzione:</b> l'importazione <b>non aggiunge</b> i dati ricevuti ai tuoi: cancella
-              completamente l'archivio di questo computer e lo sostituisce con quello del file, <b>compresi gli
-              utenti e le password</b>. Prima di procedere, esporta una copia dei tuoi dati.
+              <b>Attenzione:</b> l'importazione <b>non aggiunge</b> gli immobili ricevuti ai tuoi: sostituisce
+              per intero l'elenco degli immobili di questo computer. Gli <b>account di accesso restano i
+              tuoi</b>. Prima di procedere, esporta una copia dei tuoi dati.
             </span>
           </p>
           {dbMessaggio && (
@@ -588,11 +590,11 @@ export default function UtentiPage() {
               <IconaAvviso />
             </span>
             <div>
-              <h3 className="text-lg font-semibold text-cielo-800">Sostituire l'intero archivio?</h3>
+              <h3 className="text-lg font-semibold text-cielo-800">Sostituire tutti gli immobili?</h3>
               <p className="mt-2 text-sm text-cielo-700">
-                Questa operazione <b>cancella completamente il database attuale</b> e lo ricrea con quello del
-                file ricevuto. L'operazione non è annullabile (viene però salvata una copia di sicurezza nella
-                cartella <b>dati</b>).
+                Questa operazione <b>cancella tutti gli immobili presenti su questo computer</b> e li sostituisce
+                con quelli del file ricevuto. Non è annullabile (viene però salvata una copia di sicurezza
+                nella cartella <b>dati</b>).
               </p>
             </div>
           </div>
@@ -601,18 +603,16 @@ export default function UtentiPage() {
             <div className="rounded-lg border border-cielo-200 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-cielo-500">Ora hai</p>
               <p className="mt-1 text-cielo-800">{anteprima.immobiliAttuali} immobili</p>
-              <p className="text-cielo-800">{anteprima.utentiAttuali} utenti</p>
             </div>
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Dopo l'import</p>
               <p className="mt-1 text-emerald-800">{anteprima.immobili} immobili</p>
-              <p className="text-emerald-800">{anteprima.utenti} utenti</p>
             </div>
           </div>
 
-          <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
-            Vengono sostituiti anche gli <b>account di accesso</b>: dopo l'importazione dovrai entrare con le
-            credenziali valide nel database ricevuto.
+          <p className="mt-3 rounded-lg bg-cielo-50 p-3 text-xs leading-relaxed text-cielo-700">
+            Il tuo <b>accesso non cambia</b>: utenti, password e preferenze di questo computer restano come sono.
+            Vengono trasferiti soltanto i dati degli immobili.
             {anteprima.esportatoDa && (
               <>
                 <br />
@@ -630,8 +630,8 @@ export default function UtentiPage() {
               className="mt-0.5 accent-red-600"
             />
             <span>
-              Ho capito che l'archivio attuale di questo computer verrà <b>cancellato</b> e sostituito con quello
-              del file, e che l'operazione non si può annullare.
+              Ho capito che gli immobili presenti su questo computer verranno <b>cancellati</b> e sostituiti con
+              quelli del file, e che l'operazione non si può annullare.
             </span>
           </label>
 
@@ -649,7 +649,7 @@ export default function UtentiPage() {
               title={hoCapito ? undefined : 'Spunta la casella per procedere'}
               className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {importInCorso ? 'Importazione…' : 'Sostituisci e riavvia'}
+              {importInCorso ? 'Importazione…' : 'Sostituisci gli immobili'}
             </button>
           </div>
         </Modale>

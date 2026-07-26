@@ -545,11 +545,12 @@ ipcMain.handle('mappa:apri', (_ev, { query, modo }) =>
   }),
 )
 
-// ---------- esporta / importa il database ----------
-// Serve a passare i dati a un collega: si esporta un file, lui lo importa e il
-// suo archivio viene sostituito da quello ricevuto.
+// ---------- esporta / importa i DATI ----------
+// Serve a passare gli immobili a un collega. Vengono trasferiti SOLO i dati di
+// lavoro: gli account (con le loro password) e le preferenze restano quelli di
+// chi riceve, che continua a entrare con la propria utenza.
 
-const TABELLE_ATTESE = ['immobili', 'utenti', 'preferenze', 'app_meta']
+const FORMATO_ESPORTAZIONE = 'travi-dati-1'
 
 function riavviaApp() {
   const portable = process.env.PORTABLE_EXECUTABLE_FILE
@@ -568,119 +569,112 @@ ipcMain.handle('db:esporta', async () => {
     const s = richiediSessione()
     const oggi = new Date().toISOString().slice(0, 10)
     const scelta = await dialog.showSaveDialog({
-      title: 'Esporta database TR.A.V.I.',
-      defaultPath: `TRAVI-database-${oggi}.travidb`,
-      filters: [{ name: 'Database TR.A.V.I.', extensions: ['travidb'] }],
+      title: 'Esporta dati TR.A.V.I.',
+      defaultPath: `TRAVI-dati-${oggi}.travidati`,
+      filters: [{ name: 'Dati TR.A.V.I.', extensions: ['travidati'] }],
     })
     if (scelta.canceled || !scelta.filePath) return { data: null, error: null }
 
-    // marchia il file con versione e provenienza (serve al controllo in import)
-    const meta = db.prepare('insert or replace into app_meta (k, v) values (?, ?)')
-    meta.run('versione_app', app.getVersion())
-    meta.run('esportato_il', new Date().toISOString())
-    meta.run('esportato_da', s.email)
+    const immobili = db
+      .prepare('select asset, denominazione, portafoglio, localizzazione from immobili order by asset')
+      .all()
 
-    await db.backup(scelta.filePath) // copia consistente anche con l'app aperta
-    return { data: { percorso: scelta.filePath }, error: null }
+    const pacchetto = {
+      formato: FORMATO_ESPORTAZIONE,
+      versione_app: app.getVersion(),
+      esportato_il: new Date().toISOString(),
+      esportato_da: s.email,
+      // NB: nessun utente e nessuna password: solo i dati di lavoro
+      immobili,
+    }
+    fs.writeFileSync(scelta.filePath, JSON.stringify(pacchetto, null, 1), 'utf8')
+    return { data: { percorso: scelta.filePath, immobili: immobili.length }, error: null }
   } catch (e) {
     return { data: null, error: { message: String((e && e.message) || e) } }
   }
 })
+
+function leggiPacchetto(percorso) {
+  let pacchetto
+  try {
+    pacchetto = JSON.parse(fs.readFileSync(percorso, 'utf8'))
+  } catch {
+    throw new Error('Il file non è un\'esportazione TR.A.V.I. valida.')
+  }
+  if (!pacchetto || pacchetto.formato !== FORMATO_ESPORTAZIONE || !Array.isArray(pacchetto.immobili)) {
+    throw new Error('Il file non è un\'esportazione TR.A.V.I. valida.')
+  }
+  const versioneFile = String(pacchetto.versione_app || '')
+  if (versioneFile !== app.getVersion()) {
+    throw new Error(
+      `Il file proviene dalla versione ${versioneFile || 'sconosciuta'}, mentre qui è installata la ` +
+        `${app.getVersion()}. Aggiornate entrambi i programmi alla stessa versione e riprovate.`,
+    )
+  }
+  return pacchetto
+}
 
 // Passo 1: sceglie il file e lo verifica, senza toccare nulla.
 ipcMain.handle('db:verifica-import', async () => {
   try {
-    richiediSessione() // l'importazione è consentita a tutti gli utenti
+    richiediSessione() // consentito a tutti gli utenti
     const scelta = await dialog.showOpenDialog({
-      title: 'Importa database TR.A.V.I.',
+      title: 'Importa dati TR.A.V.I.',
       properties: ['openFile'],
-      filters: [{ name: 'Database TR.A.V.I.', extensions: ['travidb', 'db'] }],
+      filters: [{ name: 'Dati TR.A.V.I.', extensions: ['travidati', 'json'] }],
     })
     if (scelta.canceled || !scelta.filePaths[0]) return { data: null, error: null }
     const percorso = scelta.filePaths[0]
+    const pacchetto = leggiPacchetto(percorso)
 
-    const Database = require('better-sqlite3')
-    let prova
-    try {
-      prova = new Database(percorso, { readonly: true, fileMustExist: true })
-    } catch {
-      throw new Error('Il file non è un database TR.A.V.I. valido.')
-    }
-    try {
-      const tabelle = prova
-        .prepare("select name from sqlite_master where type = 'table'")
-        .all()
-        .map((r) => r.name)
-      for (const attesa of TABELLE_ATTESE) {
-        if (!tabelle.includes(attesa)) throw new Error('Il file non è un database TR.A.V.I. valido.')
-      }
-      const riga = prova.prepare("select v from app_meta where k = 'versione_app'").get()
-      const versioneFile = riga ? String(riga.v) : ''
-      if (versioneFile !== app.getVersion()) {
-        throw new Error(
-          `Il file è stato esportato con la versione ${versioneFile || 'sconosciuta'}, ` +
-            `mentre qui è installata la ${app.getVersion()}. Aggiornate entrambi i programmi alla stessa versione e riprovate.`,
-        )
-      }
-      const immobili = prova.prepare('select count(*) as n from immobili').get().n
-      const utenti = prova.prepare('select count(*) as n from utenti').get().n
-      const daRiga = prova.prepare("select v from app_meta where k = 'esportato_da'").get()
-      const ilRiga = prova.prepare("select v from app_meta where k = 'esportato_il'").get()
-      return {
-        data: {
-          percorso,
-          versione: versioneFile,
-          immobili,
-          utenti,
-          esportatoDa: daRiga ? String(daRiga.v) : '',
-          esportatoIl: ilRiga ? String(ilRiga.v) : '',
-          // quanti dati verrebbero sostituiti
-          immobiliAttuali: db.prepare('select count(*) as n from immobili').get().n,
-          utentiAttuali: db.prepare('select count(*) as n from utenti').get().n,
-        },
-        error: null,
-      }
-    } finally {
-      prova.close()
+    return {
+      data: {
+        percorso,
+        versione: String(pacchetto.versione_app || ''),
+        immobili: pacchetto.immobili.length,
+        esportatoDa: String(pacchetto.esportato_da || ''),
+        esportatoIl: String(pacchetto.esportato_il || ''),
+        immobiliAttuali: db.prepare('select count(*) as n from immobili').get().n,
+      },
+      error: null,
     }
   } catch (e) {
     return { data: null, error: { message: String((e && e.message) || e) } }
   }
 })
 
-// Passo 2: sostituisce davvero l'archivio (con copia di sicurezza) e riavvia.
+// Passo 2: sostituisce gli immobili (gli account restano quelli di chi importa).
 ipcMain.handle('db:applica-import', async (_ev, percorso) => {
   try {
-    richiediSessione() // l'importazione è consentita a tutti gli utenti
+    richiediSessione()
     if (!percorso || !fs.existsSync(percorso)) throw new Error('File non trovato.')
-    const dir = cartellaDati()
-    const attuale = path.join(dir, 'travi.db')
+    const pacchetto = leggiPacchetto(percorso)
+
+    // copia di sicurezza dell'archivio completo prima di toccare i dati
     const marca = new Date().toISOString().replace(/[:.]/g, '-')
-    const copiaSicurezza = path.join(dir, `backup-prima-import-${marca}.db`)
-
-    // copia di sicurezza dell'archivio esistente PRIMA di sostituirlo
+    const copiaSicurezza = path.join(cartellaDati(), `backup-prima-import-${marca}.db`)
     await db.backup(copiaSicurezza)
-    db.close()
-    db = null
 
-    fs.copyFileSync(percorso, attuale)
-    for (const suffisso of ['-wal', '-shm']) {
-      try {
-        fs.unlinkSync(attuale + suffisso)
-      } catch {
-        /* non esiste: ok */
+    // sostituzione in un colpo solo: o riesce tutto, o non cambia nulla
+    const svuota = db.prepare('delete from immobili')
+    const inserisci = db.prepare(
+      'insert into immobili (id, asset, denominazione, portafoglio, localizzazione) values (?, ?, ?, ?, ?)',
+    )
+    const trasferisci = db.transaction((righe) => {
+      svuota.run()
+      for (const r of righe) {
+        const asset = pulisci(r.asset)
+        const den = pulisci(r.denominazione)
+        if (!asset || !den) continue // riga incompleta: si salta
+        inserisci.run(crypto.randomUUID(), asset, den, pulisci(r.portafoglio), pulisci(r.localizzazione))
       }
-    }
-    sessione = null
-    setTimeout(riavviaApp, 600)
-    return { data: { copiaSicurezza }, error: null }
+    })
+    trasferisci(pacchetto.immobili)
+
+    const totale = db.prepare('select count(*) as n from immobili').get().n
+    registra(`importati ${totale} immobili da ${pacchetto.esportato_da || 'file'} (${percorso})`)
+    return { data: { copiaSicurezza, immobili: totale }, error: null }
   } catch (e) {
-    // se qualcosa è andato storto riapriamo l'archivio esistente
-    try {
-      if (!db) apriDb()
-    } catch {
-      /* ignora */
-    }
     return { data: null, error: { message: String((e && e.message) || e) } }
   }
 })
