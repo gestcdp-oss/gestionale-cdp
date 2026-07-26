@@ -1,10 +1,29 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
+import { usePreferenze } from '../hooks/usePreferenze'
 import { useSelezione } from '../hooks/useSelezione'
+import { TEMI } from '../lib/temi'
 
 const LOGO = './logo.svg'
 
+// Piani di attività: compaiono SOLO quando è selezionato un immobile.
+const ATTIVITA = [
+  'Building Manager',
+  'Due Diligence',
+  'Lavori',
+  'Prof SIA',
+  'Verde',
+  'Prof SIA Ambiente',
+  'Lavori Ambiente',
+  'Resp. Amianto',
+  'Vigilanze',
+  'DUVRI',
+]
+
 export default function Layout() {
+  const { utente, esci } = useAuth()
   const { immobile, seleziona } = useSelezione()
+  const { tema, impostaTema } = usePreferenze()
 
   return (
     <div className="flex min-h-full flex-col bg-cielo-100">
@@ -15,6 +34,20 @@ export default function Layout() {
             <img src={LOGO} alt="TR.A.V.I." className="h-9 w-9" />
             <span className="text-lg font-bold tracking-tight text-cielo-800">TR.A.V.I.</span>
           </Link>
+
+          <NavLink
+            to="/utenti"
+            title="Gestione utenti"
+            className={({ isActive }) =>
+              `flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition ${
+                isActive ? 'bg-cielo-200 text-cielo-800' : 'text-cielo-700 hover:bg-cielo-50'
+              }`
+            }
+          >
+            <IconaUtenti />
+            Utenti
+          </NavLink>
+
           {immobile && (
             <span className="flex min-w-0 items-center gap-2 rounded-full bg-cielo-100 py-1 pl-3 pr-1.5 text-sm text-cielo-800">
               <span className="shrink-0 text-cielo-600">Immobile selezionato:</span>
@@ -29,21 +62,64 @@ export default function Layout() {
             </span>
           )}
         </div>
-        <span className="shrink-0 text-xs text-cielo-400">v{__APP_VERSION__}</span>
+
+        <div className="flex shrink-0 items-center gap-3 text-sm">
+          {/* quadratini per la scelta del tema */}
+          <div className="flex items-center gap-1.5">
+            {TEMI.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => impostaTema(t.id)}
+                title={t.nome}
+                aria-label={`Tema ${t.nome}`}
+                className={`h-5 w-5 overflow-hidden rounded transition ${
+                  tema === t.id
+                    ? 'ring-2 ring-cielo-600 ring-offset-1 ring-offset-panna'
+                    : 'opacity-70 hover:opacity-100'
+                }`}
+                style={{ background: `linear-gradient(135deg, ${t.c1} 0 50%, ${t.c2} 50% 100%)` }}
+              />
+            ))}
+          </div>
+
+          <span className="text-xs text-cielo-400">v{__APP_VERSION__}</span>
+
+          <span className="hidden text-cielo-700 md:inline">
+            {[utente?.nome, utente?.cognome].filter(Boolean).join(' ') || utente?.email}
+            {utente?.ruolo === 'admin' && <span className="ml-1 text-xs text-cielo-500">· admin</span>}
+          </span>
+          <button
+            onClick={() => void esci()}
+            className="rounded-lg border border-cielo-300 px-3 py-1.5 text-cielo-700 transition hover:bg-cielo-50"
+          >
+            Esci
+          </button>
+        </div>
       </header>
 
       {/* CORPO: sidebar + contenuto */}
       <div className="flex flex-1">
-        <aside className="w-56 shrink-0 border-r border-cielo-200 bg-panna/70 p-3">
+        <aside className="w-56 shrink-0 border-r border-cielo-200 bg-sidebar p-3">
           <Gruppo titolo="Anagrafiche" />
           <VoceMenu to="/immobili" label="Immobili" />
-          <Gruppo titolo="Attività" />
-          <VoceMenu label="Building Manager" />
-          <VoceMenu label="Lavori" />
-          <VoceMenu label="Verde / Ambiente" />
-          <VoceMenu label="Vigilanze / DUVRI" />
-          <Gruppo titolo="Output" />
-          <VoceMenu label="Report e certificati" />
+
+          {immobile ? (
+            <>
+              <Gruppo titolo="Attività dell'immobile" />
+              <p className="truncate px-3 pb-2 text-xs font-semibold text-cielo-700" title={immobile.denominazione}>
+                {immobile.asset} · {immobile.denominazione}
+              </p>
+              {ATTIVITA.map((a) => (
+                <VoceMenu key={a} label={a} />
+              ))}
+              <Gruppo titolo="Output" />
+              <VoceMenu label="Report e certificati" />
+            </>
+          ) : (
+            <p className="mt-6 rounded-lg bg-cielo-50 px-3 py-3 text-xs leading-relaxed text-cielo-600">
+              Seleziona un immobile dall'elenco (icona della mano) per vedere le sue attività.
+            </p>
+          )}
         </aside>
 
         <main className="min-w-0 flex-1 p-6">
@@ -78,11 +154,22 @@ function VoceMenu({ to, label }: { to?: string; label: string }) {
       to={to}
       className={({ isActive }) =>
         `block rounded-lg px-3 py-2 text-sm font-medium transition ${
-          isActive ? 'bg-cielo-200 text-cielo-800' : 'text-cielo-700 hover:bg-cielo-100'
+          isActive ? 'bg-cielo-200 text-cielo-800' : 'text-cielo-700 hover:bg-cielo-50'
         }`
       }
     >
       {label}
     </NavLink>
+  )
+}
+
+function IconaUtenti() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
   )
 }

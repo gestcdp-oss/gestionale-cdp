@@ -12,7 +12,6 @@ const SMOKE = process.argv.includes('--smoke')
 if (SMOKE) {
   // niente GPU nel test automatico (va chiamato PRIMA di app.whenReady)
   app.disableHardwareAcceleration()
-  // qualunque errore imprevisto non deve lasciare il processo appeso
   process.on('unhandledRejection', (e) => {
     console.error('[SMOKE] rejection:', e)
     app.exit(1)
@@ -25,6 +24,8 @@ if (SMOKE) {
 
 /** @type {import('better-sqlite3').Database | null} */
 let db = null
+/** Utente attualmente connesso (sessione in memoria: si perde alla chiusura). */
+let sessione = null
 
 // La cartella dei dati sta SEMPRE accanto all'eseguibile (portable) o,
 // in sviluppo, dentro la cartella del progetto.
@@ -57,6 +58,28 @@ function apriDb() {
     );
     create unique index if not exists immobili_asset_uidx on immobili (lower(trim(asset)));
     create unique index if not exists immobili_denom_uidx on immobili (lower(trim(denominazione)));
+
+    create table if not exists utenti (
+      id            text primary key,
+      nome          text,
+      cognome       text,
+      email         text not null,
+      pwd_hash      text not null,
+      pwd_salt      text not null,
+      ruolo         text not null default 'utente',
+      attivo        integer not null default 1,
+      creato_il     text not null default (datetime('now')),
+      aggiornato_il text not null default (datetime('now'))
+    );
+    create unique index if not exists utenti_email_uidx on utenti (lower(trim(email)));
+
+    create table if not exists preferenze (
+      utente_id text not null,
+      chiave    text not null,
+      valore    text,
+      primary key (utente_id, chiave)
+    );
+
     create table if not exists app_meta (k text primary key, v text);
   `)
   seminaSeServe()
@@ -102,21 +125,236 @@ function rispondi(fn) {
     return { data: fn(), error: null }
   } catch (e) {
     if (eDuplicato(e)) {
-      return { data: null, error: { code: '23505', message: 'Asset o Denominazione già presenti.' } }
+      return { data: null, error: { code: '23505', message: 'Valore già presente (asset, denominazione o email).' } }
     }
     return { data: null, error: { message: String((e && e.message) || e) } }
   }
 }
 
+/** Blocca le operazioni sui dati se nessuno ha fatto login. */
+function richiediSessione() {
+  if (!sessione) throw new Error('Sessione non attiva: effettua il login.')
+  return sessione
+}
+
+function richiediAdmin() {
+  const s = richiediSessione()
+  if (s.ruolo !== 'admin') throw new Error('Operazione riservata agli amministratori.')
+  return s
+}
+
+// ---------- password ----------
+function calcolaHash(password, salt) {
+  return crypto.scryptSync(String(password), salt, 64).toString('hex')
+}
+
+function passwordCorretta(utente, password) {
+  const atteso = Buffer.from(utente.pwd_hash, 'hex')
+  const dato = Buffer.from(calcolaHash(password, utente.pwd_salt), 'hex')
+  return atteso.length === dato.length && crypto.timingSafeEqual(atteso, dato)
+}
+
+function validaPassword(password) {
+  const p = String(password || '')
+  if (p.length < 8) throw new Error('La password deve avere almeno 8 caratteri.')
+  return p
+}
+
+function profiloPubblico(u) {
+  return {
+    id: u.id,
+    nome: u.nome,
+    cognome: u.cognome,
+    email: u.email,
+    ruolo: u.ruolo,
+    attivo: !!u.attivo,
+  }
+}
+
+function inserisciUtente({ nome, cognome, email, password, ruolo }) {
+  const mail = pulisci(email)
+  if (!mail) throw new Error("L'indirizzo email (nome utente) è obbligatorio.")
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) throw new Error('Indirizzo email non valido.')
+  const pwd = validaPassword(password)
+  const salt = crypto.randomBytes(16).toString('hex')
+  const id = crypto.randomUUID()
+  db.prepare(
+    `insert into utenti (id, nome, cognome, email, pwd_hash, pwd_salt, ruolo)
+     values (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, pulisci(nome), pulisci(cognome), mail.toLowerCase(), calcolaHash(pwd, salt), salt, ruolo === 'admin' ? 'admin' : 'utente')
+  return id
+}
+
+function contaUtenti() {
+  return db.prepare('select count(*) as n from utenti').get().n
+}
+
+// ---------- IPC: autenticazione ----------
+ipcMain.handle('auth:stato', () =>
+  rispondi(() => ({
+    serveSetup: contaUtenti() === 0,
+    utente: sessione ? { ...sessione } : null,
+  })),
+)
+
+// Primo avvio: crea l'amministratore iniziale (consentito solo se non ci sono utenti).
+ipcMain.handle('auth:setup', (_ev, r) =>
+  rispondi(() => {
+    if (contaUtenti() > 0) throw new Error('Esiste già almeno un utente: usa il login.')
+    const id = inserisciUtente({ ...r, ruolo: 'admin' })
+    const u = db.prepare('select * from utenti where id = ?').get(id)
+    sessione = profiloPubblico(u)
+    return { ...sessione }
+  }),
+)
+
+ipcMain.handle('auth:login', (_ev, { email, password }) =>
+  rispondi(() => {
+    const mail = String(email || '').trim().toLowerCase()
+    const u = db.prepare('select * from utenti where lower(trim(email)) = ?').get(mail)
+    if (!u || !passwordCorretta(u, password || '')) {
+      throw new Error('Nome utente o password non corretti.')
+    }
+    if (!u.attivo) throw new Error('Utente disattivato: contatta un amministratore.')
+    sessione = profiloPubblico(u)
+    return { ...sessione }
+  }),
+)
+
+ipcMain.handle('auth:logout', () =>
+  rispondi(() => {
+    sessione = null
+    return null
+  }),
+)
+
+ipcMain.handle('auth:cambia-password', (_ev, { vecchia, nuova }) =>
+  rispondi(() => {
+    const s = richiediSessione()
+    const u = db.prepare('select * from utenti where id = ?').get(s.id)
+    if (!u || !passwordCorretta(u, vecchia || '')) throw new Error('La password attuale non è corretta.')
+    const pwd = validaPassword(nuova)
+    const salt = crypto.randomBytes(16).toString('hex')
+    db.prepare("update utenti set pwd_hash = ?, pwd_salt = ?, aggiornato_il = datetime('now') where id = ?").run(
+      calcolaHash(pwd, salt),
+      salt,
+      s.id,
+    )
+    return null
+  }),
+)
+
+// ---------- IPC: utenti ----------
+ipcMain.handle('utenti:list', () =>
+  rispondi(() => {
+    richiediSessione()
+    return db
+      .prepare('select id, nome, cognome, email, ruolo, attivo, creato_il from utenti order by lower(cognome), lower(nome)')
+      .all()
+      .map((u) => ({ ...u, attivo: !!u.attivo }))
+  }),
+)
+
+ipcMain.handle('utenti:insert', (_ev, r) =>
+  rispondi(() => {
+    richiediAdmin()
+    inserisciUtente(r)
+    return null
+  }),
+)
+
+ipcMain.handle('utenti:update', (_ev, { id, campi }) =>
+  rispondi(() => {
+    const s = richiediSessione()
+    // ognuno può modificare i propri dati; solo l'admin può modificare gli altri
+    if (s.id !== id && s.ruolo !== 'admin') throw new Error('Operazione riservata agli amministratori.')
+    const mail = pulisci(campi.email)
+    if (!mail) throw new Error("L'indirizzo email (nome utente) è obbligatorio.")
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) throw new Error('Indirizzo email non valido.')
+    const ruolo = s.ruolo === 'admin' && campi.ruolo ? (campi.ruolo === 'admin' ? 'admin' : 'utente') : undefined
+    // non lasciare il programma senza amministratori
+    if (ruolo === 'utente') {
+      const admin = db.prepare("select count(*) as n from utenti where ruolo = 'admin' and id <> ?").get(id).n
+      if (admin === 0) throw new Error('Deve restare almeno un amministratore.')
+    }
+    db.prepare(
+      `update utenti
+          set nome = ?, cognome = ?, email = ?, ruolo = coalesce(?, ruolo), aggiornato_il = datetime('now')
+        where id = ?`,
+    ).run(pulisci(campi.nome), pulisci(campi.cognome), mail.toLowerCase(), ruolo ?? null, id)
+    if (sessione && sessione.id === id) {
+      const u = db.prepare('select * from utenti where id = ?').get(id)
+      sessione = profiloPubblico(u)
+    }
+    return null
+  }),
+)
+
+// L'amministratore può assegnare una nuova password a un altro utente
+// (le password non sono recuperabili: si possono solo reimpostare).
+ipcMain.handle('utenti:reset-password', (_ev, { id, nuova }) =>
+  rispondi(() => {
+    richiediAdmin()
+    const pwd = validaPassword(nuova)
+    const salt = crypto.randomBytes(16).toString('hex')
+    const info = db
+      .prepare("update utenti set pwd_hash = ?, pwd_salt = ?, aggiornato_il = datetime('now') where id = ?")
+      .run(calcolaHash(pwd, salt), salt, id)
+    if (info.changes === 0) throw new Error('Utente non trovato.')
+    return null
+  }),
+)
+
+ipcMain.handle('utenti:delete', (_ev, id) =>
+  rispondi(() => {
+    const s = richiediAdmin()
+    if (s.id === id) throw new Error('Non puoi eliminare te stesso.')
+    const u = db.prepare('select ruolo from utenti where id = ?').get(id)
+    if (!u) throw new Error('Utente non trovato.')
+    if (u.ruolo === 'admin') {
+      const admin = db.prepare("select count(*) as n from utenti where ruolo = 'admin' and id <> ?").get(id).n
+      if (admin === 0) throw new Error('Deve restare almeno un amministratore.')
+    }
+    db.prepare('delete from preferenze where utente_id = ?').run(id)
+    db.prepare('delete from utenti where id = ?').run(id)
+    return null
+  }),
+)
+
+// ---------- IPC: preferenze (per utente) ----------
+ipcMain.handle('pref:tutte', () =>
+  rispondi(() => {
+    const s = richiediSessione()
+    const righe = db.prepare('select chiave, valore from preferenze where utente_id = ?').all(s.id)
+    const out = {}
+    for (const r of righe) out[r.chiave] = r.valore
+    return out
+  }),
+)
+
+ipcMain.handle('pref:imposta', (_ev, { chiave, valore }) =>
+  rispondi(() => {
+    const s = richiediSessione()
+    db.prepare('insert or replace into preferenze (utente_id, chiave, valore) values (?, ?, ?)').run(
+      s.id,
+      String(chiave),
+      valore === null || valore === undefined ? null : String(valore),
+    )
+    return null
+  }),
+)
+
 // ---------- IPC: immobili ----------
 ipcMain.handle('immobili:list', () =>
-  rispondi(() =>
-    db.prepare('select id, asset, denominazione, portafoglio, localizzazione, creato_il from immobili').all(),
-  ),
+  rispondi(() => {
+    richiediSessione()
+    return db.prepare('select id, asset, denominazione, portafoglio, localizzazione, creato_il from immobili').all()
+  }),
 )
 
 ipcMain.handle('immobili:insert', (_ev, r) =>
   rispondi(() => {
+    richiediSessione()
     const asset = pulisci(r.asset)
     const den = pulisci(r.denominazione)
     if (!asset || !den) throw new Error('Asset e Denominazione sono obbligatori.')
@@ -129,6 +367,7 @@ ipcMain.handle('immobili:insert', (_ev, r) =>
 
 ipcMain.handle('immobili:update', (_ev, { id, campi }) =>
   rispondi(() => {
+    richiediSessione()
     const asset = pulisci(campi.asset)
     const den = pulisci(campi.denominazione)
     if (!asset || !den) throw new Error('Asset e Denominazione sono obbligatori.')
@@ -143,6 +382,7 @@ ipcMain.handle('immobili:update', (_ev, { id, campi }) =>
 
 ipcMain.handle('immobili:delete', (_ev, id) =>
   rispondi(() => {
+    richiediSessione()
     // In futuro: qui si cancelleranno anche tutte le attività collegate all'asset.
     db.prepare('delete from immobili where id = ?').run(id)
     return null
@@ -179,6 +419,8 @@ function smoke() {
     apriDb()
     rapporto.cartella_dati = cartellaDati()
     rapporto.immobili_iniziali = db.prepare('select count(*) as n from immobili').get().n
+
+    // --- immobili: inserimento/modifica/cancellazione
     const id = crypto.randomUUID()
     const marca = 'SMOKE-' + id.slice(0, 8)
     db.prepare('insert into immobili (id, asset, denominazione) values (?, ?, ?)').run(id, marca, 'PROVA ' + marca)
@@ -186,7 +428,41 @@ function smoke() {
     rapporto.dopo_insert = db.prepare('select count(*) as n from immobili').get().n
     db.prepare('delete from immobili where id = ?').run(id)
     rapporto.dopo_delete = db.prepare('select count(*) as n from immobili').get().n
-    rapporto.ok = true
+
+    // --- utenti e password
+    const mail = `smoke.${id.slice(0, 6)}@test.local`
+    const uid = inserisciUtente({ nome: 'Prova', cognome: 'Smoke', email: mail, password: 'password123', ruolo: 'admin' })
+    const u = db.prepare('select * from utenti where id = ?').get(uid)
+    rapporto.password_giusta = passwordCorretta(u, 'password123')
+    rapporto.password_sbagliata_respinta = !passwordCorretta(u, 'sbagliata!')
+    rapporto.hash_non_in_chiaro = !String(u.pwd_hash).includes('password123')
+    let corta = false
+    try {
+      validaPassword('abc')
+    } catch {
+      corta = true
+    }
+    rapporto.password_corta_respinta = corta
+
+    // --- preferenze
+    db.prepare('insert or replace into preferenze (utente_id, chiave, valore) values (?, ?, ?)').run(uid, 'tema', 'bordeaux')
+    db.prepare('insert or replace into preferenze (utente_id, chiave, valore) values (?, ?, ?)').run(uid, 'per_pagina', '30')
+    const prefs = db.prepare('select chiave, valore from preferenze where utente_id = ?').all(uid)
+    rapporto.preferenze = Object.fromEntries(prefs.map((p) => [p.chiave, p.valore]))
+
+    // --- pulizia
+    db.prepare('delete from preferenze where utente_id = ?').run(uid)
+    db.prepare('delete from utenti where id = ?').run(uid)
+    rapporto.utenti_residui = contaUtenti()
+
+    rapporto.ok =
+      rapporto.password_giusta &&
+      rapporto.password_sbagliata_respinta &&
+      rapporto.hash_non_in_chiaro &&
+      rapporto.password_corta_respinta &&
+      rapporto.preferenze.tema === 'bordeaux' &&
+      rapporto.preferenze.per_pagina === '30' &&
+      rapporto.dopo_delete === rapporto.immobili_iniziali
   } catch (e) {
     rapporto.ok = false
     rapporto.errore = String((e && e.stack) || e)

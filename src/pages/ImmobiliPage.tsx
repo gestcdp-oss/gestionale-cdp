@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
 import { dbLocale } from '../lib/db'
 import { useSelezione } from '../hooks/useSelezione'
+import { usePreferenze } from '../hooks/usePreferenze'
 import type { Immobile } from '../lib/tipi'
 
 const VUOTO = { asset: '', denominazione: '', portafoglio: '', localizzazione: '' }
@@ -16,12 +17,13 @@ const inputSm =
 
 export default function ImmobiliPage() {
   const { immobile: selezionato, seleziona } = useSelezione()
+  // quanti immobili per pagina: scelta ricordata nelle preferenze dell'utente
+  const { perPagina, impostaPerPagina } = usePreferenze()
 
   const [form, setForm] = useState<Campi>(VUOTO)
   const [immobili, setImmobili] = useState<Immobile[]>([])
   const [ordine, setOrdine] = useState<Ordine>({ campo: 'asset', dir: 'asc' })
   const [ricerca, setRicerca] = useState('')
-  const [perPagina, setPerPagina] = useState(10)
   const [pagina, setPagina] = useState(1)
   const [caricamento, setCaricamento] = useState(true)
   const [salvataggio, setSalvataggio] = useState(false)
@@ -298,7 +300,7 @@ export default function ImmobiliPage() {
             Mostra per pagina:
             <select
               value={perPagina}
-              onChange={(e) => setPerPagina(Number(e.target.value))}
+              onChange={(e) => impostaPerPagina(Number(e.target.value))}
               className="rounded-lg border border-cielo-300 bg-white px-2 py-1.5 text-sm text-cielo-800 outline-none focus:border-cielo-400"
             >
               {[10, 20, 30, 40, 50].map((n) => (
@@ -486,7 +488,7 @@ export default function ImmobiliPage() {
 
       {eliminaTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-cielo-800/30 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-velo p-4"
           onClick={() => !eliminando && setEliminaTarget(null)}
         >
           <div className="w-full max-w-md rounded-2xl border border-cielo-200 bg-panna p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
