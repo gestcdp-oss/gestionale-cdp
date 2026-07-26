@@ -160,6 +160,27 @@ async function carica(nome, contenuto, tipo) {
 await carica('TRAVI.exe', binario, 'application/octet-stream')
 await carica('aggiornamento.json', Buffer.from(JSON.stringify(manifesto, null, 2)), 'application/json')
 
+// Verifica finale: la release deve risultare completa anche a chi la legge da
+// fuori (l'API di GitHub ha una cache di circa un minuto).
+process.stdout.write('▶ Verifica pubblicazione')
+let completa = false
+for (let i = 0; i < 20 && !completa; i++) {
+  await new Promise((r) => setTimeout(r, 3000))
+  process.stdout.write('.')
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest?_=${Date.now()}`, {
+      headers: { 'User-Agent': 'TRAVI-release', 'Cache-Control': 'no-cache' },
+    })
+    const ultima = await r.json()
+    const nomi = (ultima.assets || []).map((a) => a.name)
+    completa =
+      String(ultima.tag_name) === tag && nomi.includes('TRAVI.exe') && nomi.includes('aggiornamento.json')
+  } catch {
+    /* riprova */
+  }
+}
+console.log(completa ? ' completa ✔' : ' ⚠️ non ancora visibile a tutti (lo sarà entro un minuto)')
+
 console.log(`\n✅ Versione ${nuovaVersione} pubblicata.`)
 console.log(`   https://github.com/${REPO}/releases/tag/${tag}`)
 console.log('   Le installazioni la scaricheranno da sole al prossimo avvio.\n')

@@ -116,7 +116,12 @@ function aggiornamentoSupportato() {
  * Ritorna { versione, note, urlExe, sha256, byte } oppure null se non c'è nulla di nuovo.
  */
 async function cercaAggiornamento(versioneCorrente) {
-  const testo = await scaricaTesto(`https://api.github.com/repos/${REPO}/releases/latest`)
+  // GitHub tiene in cache le risposte per circa un minuto: senza questi
+  // accorgimenti una versione appena pubblicata risulterebbe ancora assente.
+  const testo = await scaricaTesto(`https://api.github.com/repos/${REPO}/releases/latest?_=${Date.now()}`, {
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
+  })
   const release = JSON.parse(testo)
   const versione = String(release.tag_name || '').replace(/^v/i, '')
   if (!versione) throw new Error('La release non indica una versione.')
