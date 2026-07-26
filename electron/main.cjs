@@ -31,19 +31,49 @@ let sessione = null
 // La cartella dei dati sta SEMPRE accanto all'eseguibile (portable) o,
 // in sviluppo, dentro la cartella del progetto.
 function cartellaDati() {
+  // Versione portable: i dati stanno accanto all'eseguibile.
   if (process.env.PORTABLE_EXECUTABLE_DIR) {
     return path.join(process.env.PORTABLE_EXECUTABLE_DIR, 'dati')
   }
+  // Versione installata: i dati NON possono stare nella cartella del programma,
+  // perché ogni aggiornamento la sostituisce. Vanno in una cartella dell'utente.
   if (app.isPackaged) {
-    return path.join(path.dirname(app.getPath('exe')), 'dati')
+    const base = process.env.LOCALAPPDATA || app.getPath('appData')
+    return path.join(base, 'TRAVI', 'dati')
   }
   return path.join(process.cwd(), 'dati')
+}
+
+/**
+ * Se esistono dati di una precedente installazione portable (accanto al
+ * programma o nella vecchia cartella), li porta nella posizione definitiva.
+ */
+function recuperaDatiPrecedenti() {
+  try {
+    const attuale = cartellaDati()
+    if (fs.existsSync(path.join(attuale, 'travi.db'))) return
+    const candidate = [
+      path.join(path.dirname(app.getPath('exe')), 'dati'),
+      path.join(process.env.LOCALAPPDATA || '', 'TRAVI', 'dati'),
+    ]
+    for (const vecchia of candidate) {
+      if (vecchia && vecchia !== attuale && fs.existsSync(path.join(vecchia, 'travi.db'))) {
+        fs.mkdirSync(attuale, { recursive: true })
+        fs.cpSync(vecchia, attuale, { recursive: true })
+        console.log('[dati] recuperati da', vecchia)
+        return
+      }
+    }
+  } catch {
+    /* se non riesce si parte con un archivio nuovo */
+  }
 }
 
 function apriDb(nomeFile = 'travi.db') {
   const Database = require('better-sqlite3')
   const dir = cartellaDati()
   fs.mkdirSync(dir, { recursive: true })
+  if (nomeFile === 'travi.db') recuperaDatiPrecedenti()
   db = new Database(path.join(dir, nomeFile))
   db.pragma('journal_mode = WAL') // veloce e sicuro su disco locale
   db.pragma('synchronous = NORMAL')
@@ -711,10 +741,11 @@ function cartellaCasa() {
   return path.join(base, 'TRAVI')
 }
 
-/** true se l'eseguibile è già nella sua cartella definitiva. */
+/** true se non c'è nulla da sistemare (versione installata o già a posto). */
 function giaSistemato() {
   const exe = process.env.PORTABLE_EXECUTABLE_FILE
-  if (!exe) return true // in sviluppo o versione a cartella: non si tocca nulla
+  // con il programma di installazione la sistemazione l'ha già fatta lui
+  if (!exe) return true
   return path.dirname(exe).toLowerCase() === cartellaCasa().toLowerCase()
 }
 
@@ -988,8 +1019,19 @@ async function installaAggiornamento() {
   registra(`download completato e impronta verificata: ${file}`)
   aggiornaStato({ fase: 'installazione', percentuale: 100 })
 
-  // Sostituzione diretta: nessuno script esterno, nessuna finestra, nessun
-  // permesso aggiuntivo. Se non fosse possibile, si ripiega sullo script.
+  // Versione installata: ci pensa il programma di installazione (silenzioso).
+  if (agg.eInstallato()) {
+    registra('avvio del programma di installazione della nuova versione')
+    agg.avviaInstallatore(file)
+    setTimeout(() => {
+      if (db) db.close()
+      app.exit(0)
+    }, 1200)
+    return
+  }
+
+  // Versione portable: sostituzione diretta, nessuno script esterno, nessuna
+  // finestra, nessun permesso aggiuntivo. Se non fosse possibile, si ripiega.
   let conScript = false
   try {
     agg.sostituisciSenzaScript(file)

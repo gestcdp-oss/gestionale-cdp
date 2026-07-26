@@ -1,7 +1,7 @@
 {
   "name": "travi-gest",
   "private": true,
-  "version": "1.4.0",
+  "version": "2.0.0",
   "description": "TR.A.V.I. — Tracciamento Attività Verifica Immobili (app desktop locale)",
   "author": "TRAVI",
   "type": "module",
@@ -59,13 +59,22 @@
     ],
     "win": {
       "target": [
-        "portable",
+        "nsis",
         "dir"
       ],
       "icon": "build/icon.ico"
     },
-    "portable": {
-      "artifactName": "TRAVI.exe"
+    "nsis": {
+      "artifactName": "TRAVI-Installa.exe",
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TR.A.V.I.",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "unicode": true
     }
   }
 }

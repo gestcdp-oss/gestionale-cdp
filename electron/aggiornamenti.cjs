@@ -20,7 +20,7 @@ const crypto = require('node:crypto')
 const { spawn } = require('node:child_process')
 
 const REPO = 'travi-oss/travi-gest'
-const NOME_ASSET = 'TRAVI.exe'
+const NOME_ASSET = 'TRAVI-Installa.exe'
 const NOME_MANIFESTO = 'aggiornamento.json'
 const TIMEOUT_RETE = 15000
 
@@ -105,8 +105,27 @@ function eseguibilePortable() {
   return process.env.PORTABLE_EXECUTABLE_FILE || null
 }
 
+/** true quando il programma è stato installato (non è la versione portable). */
+function eInstallato() {
+  return !eseguibilePortable() && process.env.NODE_ENV !== 'sviluppo' && require('electron').app.isPackaged
+}
+
 function aggiornamentoSupportato() {
-  return Boolean(eseguibilePortable())
+  return Boolean(eseguibilePortable()) || eInstallato()
+}
+
+/**
+ * Versione installata: si scarica il programma di installazione della nuova
+ * versione e lo si esegue in modalità silenziosa. Ci pensa lui a sostituire i
+ * file e a riavviare il programma; i dati restano dove sono (cartella utente).
+ */
+function avviaInstallatore(fileSetup) {
+  const p = spawn(fileSetup, ['/S', '--updated'], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+  p.unref()
 }
 
 // ---------------------------------------------------------------- controllo
@@ -149,7 +168,11 @@ async function cercaAggiornamento(versioneCorrente) {
 // ---------------------------------------------------------------- installazione
 
 function cartellaAppoggio() {
-  const base = path.dirname(eseguibilePortable() || process.execPath)
+  // nella versione installata la cartella del programma viene sostituita dagli
+  // aggiornamenti: il file scaricato va quindi in una cartella dell'utente
+  const base = eseguibilePortable()
+    ? path.dirname(eseguibilePortable())
+    : path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'TRAVI')
   const dir = path.join(base, 'aggiornamento')
   fs.mkdirSync(dir, { recursive: true })
   return dir
@@ -427,6 +450,8 @@ module.exports = {
   REPO,
   confrontaVersioni,
   aggiornamentoSupportato,
+  eInstallato,
+  avviaInstallatore,
   eseguibilePortable,
   cercaAggiornamento,
   scaricaAggiornamento,

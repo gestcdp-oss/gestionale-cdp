@@ -13,7 +13,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import crypto from 'node:crypto'
 
 const REPO = 'travi-oss/travi-gest'
-const EXE = 'release/TRAVI.exe'
+const EXE = 'release/TRAVI-Installa.exe'
 const MANIFESTO = 'release/aggiornamento.json'
 
 function caricaEnv(file) {
@@ -143,7 +143,7 @@ try {
 
 // rimuove eventuali file omonimi già caricati
 for (const a of release.assets || []) {
-  if (a.name === 'TRAVI.exe' || a.name === 'aggiornamento.json') {
+  if (a.name === 'TRAVI-Installa.exe' || a.name === 'aggiornamento.json') {
     await api(`/repos/${REPO}/releases/assets/${a.id}`, { method: 'DELETE' })
   }
 }
@@ -157,7 +157,7 @@ async function carica(nome, contenuto, tipo) {
   if (!r.ok) throw new Error(`Caricamento ${nome} non riuscito: ${r.status} ${await r.text()}`)
 }
 
-await carica('TRAVI.exe', binario, 'application/octet-stream')
+await carica('TRAVI-Installa.exe', binario, 'application/octet-stream')
 await carica('aggiornamento.json', Buffer.from(JSON.stringify(manifesto, null, 2)), 'application/json')
 
 // Verifica finale: la release deve risultare completa anche a chi la legge da
@@ -174,7 +174,7 @@ for (let i = 0; i < 20 && !completa; i++) {
     const ultima = await r.json()
     const nomi = (ultima.assets || []).map((a) => a.name)
     completa =
-      String(ultima.tag_name) === tag && nomi.includes('TRAVI.exe') && nomi.includes('aggiornamento.json')
+      String(ultima.tag_name) === tag && nomi.includes('TRAVI-Installa.exe') && nomi.includes('aggiornamento.json')
   } catch {
     /* riprova */
   }

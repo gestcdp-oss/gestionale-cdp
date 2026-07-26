@@ -54,8 +54,9 @@ try {
     body: JSON.stringify({ tag_name: tag, name: `TR.A.V.I. ${versione}`, body: note || `Versione ${versione}` }),
   })
 }
+const NOME_ASSET = 'TRAVI-Installa.exe'
 for (const a of release.assets || []) {
-  if (a.name === 'TRAVI.exe' || a.name === 'aggiornamento.json') {
+  if (a.name === NOME_ASSET || a.name === 'TRAVI.exe' || a.name === 'aggiornamento.json') {
     await api(`/repos/${REPO}/releases/assets/${a.id}`, { method: 'DELETE' })
   }
 }
@@ -69,6 +70,6 @@ async function carica(nome, contenuto, tipo) {
   console.log(`▶ caricato ${nome}`)
 }
 
-await carica('TRAVI.exe', binario, 'application/octet-stream')
+await carica(NOME_ASSET, binario, 'application/octet-stream')
 await carica('aggiornamento.json', Buffer.from(JSON.stringify(manifesto, null, 2)), 'application/json')
 console.log(`\n✅ Versione ${versione} pubblicata (app non toccata).`)
