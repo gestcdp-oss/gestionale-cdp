@@ -437,12 +437,22 @@ ipcMain.handle('app:versione', () => app.getVersion())
 // ---------- mappa (Google Maps) ----------
 // ATTENZIONE: aprire la mappa invia la localizzazione a Google (unica funzione
 // dell'app che esce su internet). Tutto il resto resta sul computer.
+/** true se il testo è una coppia di coordinate (es. "41.9028, 12.4964"). */
+function sonoCoordinate(q) {
+  return /^-?\d{1,3}([.,]\d+)?\s*[,;]\s*-?\d{1,3}([.,]\d+)?$/.test(String(q).trim())
+}
+
 function urlMappa(query, modo) {
   const q = String(query || '').trim()
   if (!q) throw new Error('Localizzazione non indicata.')
-  return modo === 'browser'
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
-    : `https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed&hl=it`
+  if (modo === 'browser') {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
+  }
+  // Mappa incorporata: serve l'indirizzo "classico" con iwloc, altrimenti Google
+  // centra la vista ma non pianta il segnaposto rosso. Per le coordinate serve
+  // il prefisso loc: (senza, le interpreta come semplice centro della mappa).
+  const punto = sonoCoordinate(q) ? `loc:${q.replace(/;/, ',').replace(/\s+/g, '')}` : q
+  return `https://maps.google.com/maps?q=${encodeURIComponent(punto)}&hl=it&z=16&ie=UTF8&iwloc=B&output=embed`
 }
 
 const HOST_AMMESSI = /(^|\.)(google\.com|google\.it|gstatic\.com|googleapis\.com|ggpht\.com)$/i
@@ -473,7 +483,11 @@ function paginaErroreMappa(titolo) {
 // La mappa "embed" di Google funziona SOLO dentro un iframe: carichiamo quindi
 // una paginetta locale (electron/mappa.html) che ospita l'iframe.
 function caricaMappa(finestra, query) {
-  return finestra.loadFile(path.join(__dirname, 'mappa.html'), { query: { q: String(query) } })
+  // l'indirizzo della mappa lo calcola il programma (così è verificabile);
+  // la pagina locale si limita a ospitarlo nell'iframe
+  return finestra.loadFile(path.join(__dirname, 'mappa.html'), {
+    query: { q: String(query), src: urlMappa(query, 'finestra') },
+  })
 }
 
 function apriFinestraMappa(query) {
@@ -878,10 +892,14 @@ function smoke() {
     db.prepare('delete from utenti where id = ?').run(idPerm)
 
     // --- indirizzi mappa (indirizzo, coordinate, caratteri speciali)
-    const finestra = urlMappa('Via di Toppo, 31, 33100 Udine', 'finestra')
+    const finestra = urlMappa('Via Roma, 31, 33100 Udine', 'finestra')
     const browser = urlMappa('41.9028, 12.4964', 'browser')
-    rapporto.mappa_finestra_ok = finestra.includes('output=embed') && finestra.includes('Via%20di%20Toppo')
+    const finestraCoord = urlMappa('41.9028, 12.4964', 'finestra')
+    rapporto.mappa_finestra_ok =
+      finestra.includes('output=embed') && finestra.includes('iwloc=B') && finestra.includes('Via%20Roma')
     rapporto.mappa_browser_ok = browser.includes('maps/search') && browser.includes('41.9028%2C%2012.4964')
+    // con le coordinate serve il prefisso loc: per ottenere il segnaposto
+    rapporto.mappa_coordinate_con_segnaposto = finestraCoord.includes('loc%3A41.9028%2C12.4964')
     let mappaVuotaRespinta = false
     try {
       urlMappa('  ', 'finestra')
@@ -927,6 +945,7 @@ function smoke() {
       rapporto.mappa_browser_ok &&
       rapporto.mappa_vuota_respinta &&
       rapporto.mappa_host_filtrati &&
+      rapporto.mappa_coordinate_con_segnaposto &&
       rapporto.versioni_ordinate &&
       rapporto.preferenze.tema === 'bordeaux' &&
       rapporto.preferenze.per_pagina === '30' &&

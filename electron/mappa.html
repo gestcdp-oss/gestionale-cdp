@@ -48,14 +48,15 @@
       </div>
     </div>
     <script>
-      const q = new URLSearchParams(location.search).get('q') || ''
+      const parametri = new URLSearchParams(location.search)
+      const src = parametri.get('src') || ''
       const iframe = document.getElementById('mappa')
-      if (!q) {
+      // per prudenza si accettano solo indirizzi di Google Maps
+      if (/^https:\/\/(www\.|maps\.)?google\.com\//.test(src)) {
+        iframe.src = src
+      } else {
         iframe.style.display = 'none'
         document.getElementById('avviso').style.display = 'flex'
-      } else {
-        iframe.src =
-          'https://www.google.com/maps?q=' + encodeURIComponent(q) + '&output=embed&hl=it&z=16'
       }
     </script>
   </body>
