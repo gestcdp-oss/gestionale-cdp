@@ -213,6 +213,9 @@ export default function SchedaImmobilePage() {
         </div>
       </section>
 
+      {/* riga che separa il riepilogo dalle sezioni */}
+      <hr className="border-t border-cielo-300" />
+
       {/* ---------- parte inferiore: sezioni dell'immobile ---------- */}
       {GRUPPI_IMMOBILE.map((gruppo) => {
         const voci = gruppo.voci.filter((v) => v.id !== 'scheda')
