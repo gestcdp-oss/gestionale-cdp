@@ -39,11 +39,11 @@ function cartellaDati() {
   return path.join(process.cwd(), 'dati')
 }
 
-function apriDb() {
+function apriDb(nomeFile = 'travi.db') {
   const Database = require('better-sqlite3')
   const dir = cartellaDati()
   fs.mkdirSync(dir, { recursive: true })
-  db = new Database(path.join(dir, 'travi.db'))
+  db = new Database(path.join(dir, nomeFile))
   db.pragma('journal_mode = WAL') // veloce e sicuro su disco locale
   db.pragma('synchronous = NORMAL')
   db.exec(`
@@ -540,11 +540,27 @@ function creaFinestra() {
 }
 
 // ---------- smoke test (verifica automatica senza finestra) ----------
+// Il test NON tocca mai il database reale (travi.db): lavora su una copia
+// usa e getta, così i dati dell'utente non corrono alcun rischio.
+const FILE_TEST = '_collaudo.db'
+
+function rimuoviDbTest() {
+  for (const suffisso of ['', '-wal', '-shm']) {
+    try {
+      fs.unlinkSync(path.join(cartellaDati(), FILE_TEST + suffisso))
+    } catch {
+      /* non esiste: ok */
+    }
+  }
+}
+
 function smoke() {
   const rapporto = {}
   try {
-    apriDb()
+    rimuoviDbTest()
+    apriDb(FILE_TEST) // database dedicato al collaudo
     rapporto.cartella_dati = cartellaDati()
+    rapporto.database_di_collaudo = FILE_TEST
     rapporto.immobili_iniziali = db.prepare('select count(*) as n from immobili').get().n
 
     // --- immobili: inserimento/modifica/cancellazione
@@ -665,6 +681,15 @@ function smoke() {
   } catch (e) {
     rapporto.ok = false
     rapporto.errore = String((e && e.stack) || e)
+  }
+  // chiude e cancella il database di collaudo
+  try {
+    if (db) db.close()
+    db = null
+    rimuoviDbTest()
+    rapporto.db_collaudo_rimosso = true
+  } catch {
+    rapporto.db_collaudo_rimosso = false
   }
   try {
     fs.mkdirSync(cartellaDati(), { recursive: true })
