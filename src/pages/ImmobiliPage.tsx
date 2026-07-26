@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { dbLocale } from '../lib/db'
 import { useSelezione } from '../hooks/useSelezione'
 import { useImmobili } from '../hooks/useImmobili'
@@ -18,6 +19,7 @@ const inputSm =
 
 export default function ImmobiliPage() {
   const { immobile: selezionato, seleziona } = useSelezione()
+  const vaiA = useNavigate()
   // quanti immobili per pagina: scelta ricordata nelle preferenze dell'utente
   const { perPagina, impostaPerPagina, modoMappa, impostaModoMappa } = usePreferenze()
 
@@ -30,7 +32,6 @@ export default function ImmobiliPage() {
   const [salvataggio, setSalvataggio] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
 
   // modifica inline
   const [editId, setEditId] = useState<string | null>(null)
@@ -51,12 +52,6 @@ export default function ImmobiliPage() {
     setPagina(1)
   }, [ricerca, perPagina])
 
-  // il toast di selezione sparisce da solo dopo 3 secondi
-  useEffect(() => {
-    if (!toast) return
-    const t = window.setTimeout(() => setToast(null), 3000)
-    return () => window.clearTimeout(t)
-  }, [toast])
 
   const portafogli = useMemo(
     () => Array.from(new Set(immobili.map((i) => i.portafoglio).filter(Boolean))).sort() as string[],
@@ -118,11 +113,10 @@ export default function ImmobiliPage() {
     if (dove) void dbLocale.mappa.apri(dove, modo)
   }
 
-  // seleziona l'immobile: aggiorna header, mostra toast e riporta in cima
+  /** Selezione dell'immobile: si entra subito nella sua Scheda. */
   function selezionaImmobile(i: Immobile) {
     seleziona({ id: i.id, asset: i.asset, denominazione: i.denominazione })
-    setToast(`Immobile selezionato: ${i.denominazione}`)
-    scorriInCima()
+    vaiA('/immobile')
   }
 
   // ---- inserimento ----
@@ -533,15 +527,6 @@ export default function ImmobiliPage() {
                 Annulla
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {toast && (
-        <div className="fixed inset-x-0 top-4 z-50 flex justify-center px-4">
-          <div className="flex items-center gap-2 rounded-full bg-cielo-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg">
-            <IconaCheck />
-            {toast}
           </div>
         </div>
       )}
