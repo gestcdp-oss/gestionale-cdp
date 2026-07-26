@@ -33,3 +33,6 @@ electron/seed-immobili.json
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
+
+# cartella di compilazione temporanea (eseguibili pesanti)
+release-demo/

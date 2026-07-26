@@ -129,28 +129,13 @@ export default function GestoreAggiornamenti({ children }: { children: ReactNode
 
   // --- schermata di avvio: nulla è accessibile finché non si conclude ---
   if (!avvioConcluso) {
-    return (
+    return inCorso ? (
+      <PannelloAggiornamento stato={stato} />
+    ) : (
       <div className="flex h-screen flex-col items-center justify-center bg-cielo-100 p-6 text-center">
         <img src={LOGO} alt="TR.A.V.I." className="h-28 w-28" />
         <h1 className="mt-4 text-2xl font-bold tracking-tight text-cielo-800">TR.A.V.I.</h1>
-        {inCorso ? (
-          <>
-            <p className="mt-4 text-cielo-700">
-              {stato.fase === 'download'
-                ? `Scaricamento aggiornamento ${stato.disponibile?.versione ?? ''}…`
-                : 'Installazione in corso: il programma si riavvia da solo…'}
-            </p>
-            <div className="mt-4 h-2.5 w-72 overflow-hidden rounded-full bg-cielo-200">
-              <div
-                className="h-full rounded-full bg-amber-500 transition-[width] duration-300"
-                style={{ width: `${Math.max(4, stato.percentuale)}%` }}
-              />
-            </div>
-            <p className="mt-2 text-xs text-cielo-500">{stato.percentuale}%</p>
-          </>
-        ) : (
-          <p className="mt-4 text-cielo-600">Controllo aggiornamenti…</p>
-        )}
+        <p className="mt-4 text-cielo-600">Controllo aggiornamenti…</p>
       </div>
     )
   }
@@ -198,25 +183,51 @@ export default function GestoreAggiornamenti({ children }: { children: ReactNode
         </div>
       )}
 
-      {/* aggiornamento avviato dal banner: schermata di avanzamento */}
-      {inCorso && (
-        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-cielo-100/95 p-6 text-center">
-          <img src={LOGO} alt="" className="h-24 w-24" />
-          <p className="mt-4 text-cielo-700">
-            {stato.fase === 'download'
-              ? `Scaricamento aggiornamento ${stato.disponibile?.versione ?? ''}…`
-              : 'Installazione in corso: il programma si riavvia da solo…'}
-          </p>
-          <div className="mt-4 h-2.5 w-72 overflow-hidden rounded-full bg-cielo-200">
-            <div
-              className="h-full rounded-full bg-amber-500 transition-[width] duration-300"
-              style={{ width: `${Math.max(4, stato.percentuale)}%` }}
-            />
-          </div>
-          <p className="mt-2 text-xs text-cielo-500">{stato.percentuale}%</p>
-        </div>
-      )}
+      {/* aggiornamento avviato dal banner: pannello che blocca tutto */}
+      {inCorso && <PannelloAggiornamento stato={stato} />}
     </AggCtx.Provider>
+  )
+}
+
+/**
+ * Pannello mostrato durante l'aggiornamento: copre l'intera finestra (nulla è
+ * cliccabile) e racchiude l'avanzamento in un riquadro pieno, così non si
+ * sovrappone al contenuto sottostante.
+ */
+function PannelloAggiornamento({ stato }: { stato: StatoAggiornamento }) {
+  const scaricando = stato.fase === 'download'
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex cursor-wait items-center justify-center bg-cielo-100 p-6"
+      // blocca ogni interazione con il programma finché l'operazione non finisce
+      onClickCapture={(e) => e.preventDefault()}
+      onContextMenu={(e) => e.preventDefault()}
+      role="alertdialog"
+      aria-busy="true"
+    >
+      <div className="w-full max-w-md rounded-2xl border border-cielo-200 bg-panna p-8 text-center shadow-xl">
+        <img src={LOGO} alt="" className="mx-auto h-24 w-24" />
+        <h2 className="mt-4 text-xl font-bold tracking-tight text-cielo-800">Aggiornamento in corso</h2>
+        <p className="mt-2 text-sm text-cielo-700">
+          {scaricando
+            ? `Scaricamento della versione ${stato.disponibile?.versione ?? ''}…`
+            : 'Installazione della nuova versione…'}
+        </p>
+
+        <div className="mt-5 h-3 w-full overflow-hidden rounded-full bg-cielo-200">
+          <div
+            className="h-full rounded-full bg-amber-500 transition-[width] duration-300"
+            style={{ width: `${Math.max(4, stato.percentuale)}%` }}
+          />
+        </div>
+        <p className="mt-2 text-xs font-medium text-cielo-600">{stato.percentuale}%</p>
+
+        <p className="mt-6 rounded-xl bg-amber-50 p-4 text-sm leading-relaxed text-amber-800">
+          <b>Non chiudere l'app manualmente.</b> Al termine dell'aggiornamento si riavvierà da sola e vedrai il
+          numero della nuova versione in alto a destra.
+        </p>
+      </div>
+    </div>
   )
 }
 

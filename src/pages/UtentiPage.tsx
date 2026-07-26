@@ -41,6 +41,7 @@ export default function UtentiPage() {
   const [dbErrore, setDbErrore] = useState<string | null>(null)
   const [anteprima, setAnteprima] = useState<AnteprimaImport | null>(null)
   const [importInCorso, setImportInCorso] = useState(false)
+  const [hoCapito, setHoCapito] = useState(false)
 
   // modifica inline + azioni sugli altri utenti
   const [editId, setEditId] = useState<string | null>(null)
@@ -159,7 +160,10 @@ export default function UtentiPage() {
       setDbErrore(error.message)
       return
     }
-    if (data) setAnteprima(data)
+    if (data) {
+      setHoCapito(false) // ogni volta si riparte dalla conferma esplicita
+      setAnteprima(data)
+    }
   }
 
   async function confermaImport() {
@@ -348,8 +352,9 @@ export default function UtentiPage() {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">Database</h2>
         <div className="mt-3 max-w-2xl rounded-xl border border-cielo-200 bg-panna p-5">
           <p className="text-sm text-cielo-600">
-            Serve a passare i dati a un collega: tu esporti un file, lui lo importa nella sua copia del
-            programma. Entrambi dovete avere la <b>stessa versione</b> di TR.A.V.I.
+            Ogni copia del programma ha il <b>proprio archivio</b>, sul proprio computer. Per passare i dati a un
+            collega: tu esporti un file, lui lo importa. Entrambi dovete avere la <b>stessa versione</b> di
+            TR.A.V.I.
           </p>
 
           <div className="mt-4 flex flex-wrap gap-3">
@@ -360,22 +365,25 @@ export default function UtentiPage() {
               <IconaEsporta />
               Export DB
             </button>
-            {admin && (
-              <button
-                onClick={() => void scegliFileImport()}
-                className="flex items-center gap-2 rounded-lg border border-cielo-300 px-4 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50"
-              >
-                <IconaImporta />
-                Import DB
-              </button>
-            )}
+            <button
+              onClick={() => void scegliFileImport()}
+              className="flex items-center gap-2 rounded-lg border border-cielo-300 px-4 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50"
+            >
+              <IconaImporta />
+              Import DB
+            </button>
           </div>
 
-          {!admin && (
-            <p className="mt-3 text-xs text-cielo-500">
-              L'importazione è riservata agli amministratori: sostituisce l'intero archivio.
-            </p>
-          )}
+          <p className="mt-4 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
+            <span className="mt-0.5 shrink-0">
+              <IconaAvviso />
+            </span>
+            <span>
+              <b>Attenzione:</b> l'importazione <b>non aggiunge</b> i dati ricevuti ai tuoi: cancella
+              completamente l'archivio di questo computer e lo sostituisce con quello del file, <b>compresi gli
+              utenti e le password</b>. Prima di procedere, esporta una copia dei tuoi dati.
+            </span>
+          </p>
           {dbMessaggio && (
             <p className="mt-4 break-all rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{dbMessaggio}</p>
           )}
@@ -614,7 +622,20 @@ export default function UtentiPage() {
             )}
           </p>
 
-          <div className="mt-6 flex justify-end gap-3">
+          <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            <input
+              type="checkbox"
+              checked={hoCapito}
+              onChange={(e) => setHoCapito(e.target.checked)}
+              className="mt-0.5 accent-red-600"
+            />
+            <span>
+              Ho capito che l'archivio attuale di questo computer verrà <b>cancellato</b> e sostituito con quello
+              del file, e che l'operazione non si può annullare.
+            </span>
+          </label>
+
+          <div className="mt-5 flex justify-end gap-3">
             <button
               onClick={() => setAnteprima(null)}
               disabled={importInCorso}
@@ -624,8 +645,9 @@ export default function UtentiPage() {
             </button>
             <button
               onClick={() => void confermaImport()}
-              disabled={importInCorso}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50"
+              disabled={importInCorso || !hoCapito}
+              title={hoCapito ? undefined : 'Spunta la casella per procedere'}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {importInCorso ? 'Importazione…' : 'Sostituisci e riavvia'}
             </button>

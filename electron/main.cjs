@@ -590,7 +590,7 @@ ipcMain.handle('db:esporta', async () => {
 // Passo 1: sceglie il file e lo verifica, senza toccare nulla.
 ipcMain.handle('db:verifica-import', async () => {
   try {
-    richiediAdmin()
+    richiediSessione() // l'importazione è consentita a tutti gli utenti
     const scelta = await dialog.showOpenDialog({
       title: 'Importa database TR.A.V.I.',
       properties: ['openFile'],
@@ -651,7 +651,7 @@ ipcMain.handle('db:verifica-import', async () => {
 // Passo 2: sostituisce davvero l'archivio (con copia di sicurezza) e riavvia.
 ipcMain.handle('db:applica-import', async (_ev, percorso) => {
   try {
-    richiediAdmin()
+    richiediSessione() // l'importazione è consentita a tutti gli utenti
     if (!percorso || !fs.existsSync(percorso)) throw new Error('File non trovato.')
     const dir = cartellaDati()
     const attuale = path.join(dir, 'travi.db')
