@@ -1,13 +1,19 @@
-// Genera build/icon.ico (icona di TRAVI.exe) a partire da public/logo.svg.
+// Genera build/icon.ico (icona di TRAVI.exe).
+// Usa build/icona.svg (versione dedicata, soggetto grande e leggibile anche
+// nelle dimensioni piccole); in mancanza ripiega sul logo dell'app.
+
 import { Resvg } from '@resvg/resvg-js'
 import pngToIco from 'png-to-ico'
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 
-const svg = readFileSync('public/logo.svg', 'utf8')
-const misure = [256, 128, 64, 48, 32, 16]
+const sorgente = existsSync('build/icona.svg') ? 'build/icona.svg' : 'public/logo.svg'
+const svg = readFileSync(sorgente, 'utf8')
+
+// Windows sceglie la misura in base al contesto (desktop, barra, Alt+Tab).
+const misure = [256, 128, 96, 64, 48, 32, 24, 16]
 const pngs = misure.map((m) => new Resvg(svg, { fitTo: { mode: 'width', value: m } }).render().asPng())
 
 mkdirSync('build', { recursive: true })
 const ico = await pngToIco(pngs)
 writeFileSync('build/icon.ico', ico)
-console.log(`build/icon.ico generato (${ico.length} byte)`)
+console.log(`build/icon.ico generato da ${sorgente} (${misure.join(', ')} px — ${ico.length} byte)`)

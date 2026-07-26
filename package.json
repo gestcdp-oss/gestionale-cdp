@@ -18,6 +18,7 @@
     "predist": "node scripts/chiudi-app.mjs",
     "dist": "npm run build && electron-builder --win",
     "postdist": "node scripts/avvia-app.mjs",
+    "rilascia": "node scripts/rilascia.mjs",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {

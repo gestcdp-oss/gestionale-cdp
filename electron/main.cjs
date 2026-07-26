@@ -3,6 +3,7 @@
 // Nessuna connessione a internet.
 
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron')
+const agg = require('./aggiornamenti.cjs')
 const path = require('node:path')
 const fs = require('node:fs')
 const crypto = require('node:crypto')
@@ -466,10 +467,16 @@ function paginaErroreMappa(titolo) {
   return 'data:text/html;charset=utf-8,' + encodeURIComponent(html)
 }
 
+// La mappa "embed" di Google funziona SOLO dentro un iframe: carichiamo quindi
+// una paginetta locale (electron/mappa.html) che ospita l'iframe.
+function caricaMappa(finestra, query) {
+  return finestra.loadFile(path.join(__dirname, 'mappa.html'), { query: { q: String(query) } })
+}
+
 function apriFinestraMappa(query) {
-  const url = urlMappa(query, 'finestra')
   if (finestraMappa && !finestraMappa.isDestroyed()) {
-    finestraMappa.loadURL(url)
+    void caricaMappa(finestraMappa, query)
+    finestraMappa.setTitle(`Mappa — ${query}`)
     finestraMappa.show()
     finestraMappa.focus()
     return
@@ -493,17 +500,20 @@ function apriFinestraMappa(query) {
     void shell.openExternal(u)
     return { action: 'deny' }
   })
+  // la pagina principale resta locale; l'iframe può andare solo su Google
   finestraMappa.webContents.on('will-navigate', (ev, u) => {
-    if (!hostAmmesso(u)) ev.preventDefault()
+    if (!u.startsWith('file://') && !hostAmmesso(u)) ev.preventDefault()
   })
-  finestraMappa.webContents.on('did-fail-load', (_e, codice) => {
+  finestraMappa.webContents.on('did-fail-load', (_e, codice, _desc, urlFallito, principale) => {
     if (codice === -3) return // caricamento annullato: non è un errore
-    void finestraMappa?.loadURL(paginaErroreMappa(query))
+    if (principale && String(urlFallito || '').startsWith('file://')) {
+      void finestraMappa?.loadURL(paginaErroreMappa(query))
+    }
   })
   finestraMappa.on('closed', () => {
     finestraMappa = null
   })
-  void finestraMappa.loadURL(url)
+  void caricaMappa(finestraMappa, query)
 }
 
 ipcMain.handle('mappa:apri', (_ev, { query, modo }) =>
@@ -517,6 +527,85 @@ ipcMain.handle('mappa:apri', (_ev, { query, modo }) =>
     return null
   }),
 )
+
+// ---------- aggiornamenti ----------
+// Stato condiviso con l'interfaccia: fase, avanzamento, versione trovata.
+let statoAgg = {
+  supportato: false,
+  versioneCorrente: '',
+  fase: 'inattivo', // inattivo | controllo | disponibile | download | installazione | aggiornato | errore
+  percentuale: 0,
+  disponibile: null, // { versione, note }
+  messaggio: '',
+}
+
+function inviaStatoAgg() {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('agg:stato', statoAgg)
+  }
+}
+
+function aggiornaStato(patch) {
+  statoAgg = { ...statoAgg, ...patch }
+  inviaStatoAgg()
+}
+
+/** Controlla se esiste una versione più recente. Non installa nulla. */
+async function controllaAggiornamenti() {
+  if (!agg.aggiornamentoSupportato()) {
+    aggiornaStato({ fase: 'inattivo', messaggio: 'Aggiornamento automatico attivo solo in versione portable.' })
+    return null
+  }
+  aggiornaStato({ fase: 'controllo', messaggio: '', percentuale: 0 })
+  try {
+    const info = await agg.cercaAggiornamento(app.getVersion())
+    if (!info) {
+      aggiornaStato({ fase: 'inattivo', disponibile: null, messaggio: '' })
+      return null
+    }
+    ultimoAggiornamento = info
+    aggiornaStato({
+      fase: 'disponibile',
+      disponibile: { versione: info.versione, note: info.note },
+      messaggio: '',
+    })
+    return info
+  } catch (e) {
+    // nessuna rete o GitHub irraggiungibile: si continua a lavorare normalmente
+    aggiornaStato({ fase: 'errore', messaggio: String((e && e.message) || e) })
+    return null
+  }
+}
+
+/** @type {null | object} */
+let ultimoAggiornamento = null
+
+/** Scarica, verifica e installa l'aggiornamento (l'app si chiude e riparte). */
+async function installaAggiornamento() {
+  if (!ultimoAggiornamento) throw new Error('Nessun aggiornamento da installare.')
+  aggiornaStato({ fase: 'download', percentuale: 0, messaggio: '' })
+  const file = await agg.scaricaAggiornamento(ultimoAggiornamento, (p) => aggiornaStato({ percentuale: p }))
+  aggiornaStato({ fase: 'installazione', percentuale: 100 })
+  agg.avviaSostituzione(file)
+  // lascia il tempo all'interfaccia di mostrare il messaggio, poi esce
+  setTimeout(() => {
+    if (db) db.close()
+    app.exit(0)
+  }, 1200)
+}
+
+ipcMain.handle('agg:stato', () => ({ data: statoAgg, error: null }))
+ipcMain.handle('agg:controlla', () => rispondi(() => controllaAggiornamenti()))
+ipcMain.handle('agg:installa', async () => {
+  try {
+    await installaAggiornamento()
+    return { data: null, error: null }
+  } catch (e) {
+    const messaggio = String((e && e.message) || e)
+    aggiornaStato({ fase: 'errore', messaggio })
+    return { data: null, error: { message: messaggio } }
+  }
+})
 
 // ---------- finestra ----------
 function creaFinestra() {
@@ -649,6 +738,15 @@ function smoke() {
     rapporto.mappa_host_filtrati =
       hostAmmesso('https://www.google.com/maps') && !hostAmmesso('https://sito-esterno.example')
 
+    // --- aggiornamenti: confronto versioni e script di sostituzione
+    rapporto.versioni_ordinate =
+      agg.confrontaVersioni('1.0.1', '1.0.0') === 1 &&
+      agg.confrontaVersioni('1.0.0', '1.0.1') === -1 &&
+      agg.confrontaVersioni('1.10.0', '1.9.9') === 1 &&
+      agg.confrontaVersioni('v1.2.3', '1.2.3') === 0 &&
+      agg.confrontaVersioni('2.0.0', '1.99.99') === 1
+    rapporto.agg_disattivato_fuori_portable = agg.aggiornamentoSupportato() === false
+
     // --- preferenze
     db.prepare('insert or replace into preferenze (utente_id, chiave, valore) values (?, ?, ?)').run(uid, 'tema', 'bordeaux')
     db.prepare('insert or replace into preferenze (utente_id, chiave, valore) values (?, ?, ?)').run(uid, 'per_pagina', '30')
@@ -675,6 +773,7 @@ function smoke() {
       rapporto.mappa_browser_ok &&
       rapporto.mappa_vuota_respinta &&
       rapporto.mappa_host_filtrati &&
+      rapporto.versioni_ordinate &&
       rapporto.preferenze.tema === 'bordeaux' &&
       rapporto.preferenze.per_pagina === '30' &&
       rapporto.dopo_delete === rapporto.immobili_iniziali
@@ -729,7 +828,14 @@ app.whenReady().then(() => {
     app.exit(1)
     return
   }
+  statoAgg.supportato = agg.aggiornamentoSupportato()
+  statoAgg.versioneCorrente = app.getVersion()
   creaFinestra()
+  // ricontrolla una volta all'ora, per accorgersi degli aggiornamenti
+  // pubblicati mentre il programma è già aperto
+  setInterval(() => {
+    if (statoAgg.fase === 'inattivo' || statoAgg.fase === 'errore') void controllaAggiornamenti()
+  }, 60 * 60 * 1000)
 })
 
 app.on('window-all-closed', () => {

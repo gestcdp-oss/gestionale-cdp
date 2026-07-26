@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mappa</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #e6f0f8;
+        font-family: system-ui, 'Segoe UI', sans-serif;
+      }
+      iframe {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+      #avviso {
+        display: none;
+        height: 100%;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        color: #37596f;
+        padding: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Google Maps in modalità "embed" funziona SOLO dentro un iframe:
+         questa pagina locale serve esattamente a ospitarlo. -->
+    <iframe
+      id="mappa"
+      allowfullscreen
+      loading="eager"
+      referrerpolicy="no-referrer-when-downgrade"
+      title="Mappa"
+    ></iframe>
+    <div id="avviso">
+      <div>
+        <div style="font-size: 40px">🌐</div>
+        <h2 style="margin: 12px 0 6px">Mappa non disponibile</h2>
+        <p style="margin: 0; line-height: 1.5; color: #426e96">
+          Non è stato possibile caricare Google Maps.<br />Serve una connessione a internet.
+        </p>
+      </div>
+    </div>
+    <script>
+      const q = new URLSearchParams(location.search).get('q') || ''
+      const iframe = document.getElementById('mappa')
+      if (!q) {
+        iframe.style.display = 'none'
+        document.getElementById('avviso').style.display = 'flex'
+      } else {
+        iframe.src =
+          'https://www.google.com/maps?q=' + encodeURIComponent(q) + '&output=embed&hl=it&z=16'
+      }
+    </script>
+  </body>
+</html>

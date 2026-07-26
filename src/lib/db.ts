@@ -59,7 +59,30 @@ type ApiTravi = {
   mappa: {
     apri(query: string, modo: 'finestra' | 'browser'): Promise<RispostaDb<null>>
   }
+  aggiornamenti: {
+    stato(): Promise<RispostaDb<StatoAggiornamento>>
+    controlla(): Promise<RispostaDb<unknown>>
+    installa(): Promise<RispostaDb<null>>
+    osserva(callback: (stato: StatoAggiornamento) => void): () => void
+  }
   versione(): Promise<string>
+}
+
+export type FaseAggiornamento =
+  | 'inattivo'
+  | 'controllo'
+  | 'disponibile'
+  | 'download'
+  | 'installazione'
+  | 'errore'
+
+export type StatoAggiornamento = {
+  supportato: boolean
+  versioneCorrente: string
+  fase: FaseAggiornamento
+  percentuale: number
+  disponibile: { versione: string; note: string } | null
+  messaggio: string
 }
 
 declare global {
@@ -85,6 +108,22 @@ const stub: ApiTravi = {
   preferenze: { tutte: async () => ({ data: {}, error: ERRORE_AMBIENTE }), imposta: ko },
   immobili: { list: async () => ({ data: [], error: ERRORE_AMBIENTE }), insert: ko, update: ko, remove: ko },
   mappa: { apri: ko },
+  aggiornamenti: {
+    stato: async () => ({
+      data: {
+        supportato: false,
+        versioneCorrente: '',
+        fase: 'inattivo' as const,
+        percentuale: 0,
+        disponibile: null,
+        messaggio: '',
+      },
+      error: null,
+    }),
+    controlla: ko,
+    installa: ko,
+    osserva: () => () => {},
+  },
   versione: async () => 'n/d',
 }
 

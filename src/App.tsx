@@ -3,20 +3,24 @@ import { AuthProvider, useAuth } from './hooks/useAuth'
 import { PreferenzeProvider } from './hooks/usePreferenze'
 import { SelezioneProvider } from './hooks/useSelezione'
 import Layout from './components/Layout'
+import GestoreAggiornamenti from './components/GestoreAggiornamenti'
 import LoginPage from './pages/LoginPage'
 import HomePage from './pages/HomePage'
 import ImmobiliPage from './pages/ImmobiliPage'
 import UtentiPage from './pages/UtentiPage'
 
 export default function App() {
+  // L'aggiornamento viene prima di tutto: login e dati arrivano dopo.
   return (
-    <AuthProvider>
-      <PreferenzeProvider>
-        <SelezioneProvider>
-          <Contenuto />
-        </SelezioneProvider>
-      </PreferenzeProvider>
-    </AuthProvider>
+    <GestoreAggiornamenti>
+      <AuthProvider>
+        <PreferenzeProvider>
+          <SelezioneProvider>
+            <Contenuto />
+          </SelezioneProvider>
+        </PreferenzeProvider>
+      </AuthProvider>
+    </GestoreAggiornamenti>
   )
 }
 

@@ -29,5 +29,16 @@ contextBridge.exposeInMainWorld('travi', {
   mappa: {
     apri: (query, modo) => ipcRenderer.invoke('mappa:apri', { query, modo }),
   },
+  aggiornamenti: {
+    stato: () => ipcRenderer.invoke('agg:stato'),
+    controlla: () => ipcRenderer.invoke('agg:controlla'),
+    installa: () => ipcRenderer.invoke('agg:installa'),
+    // avvisa l'interfaccia a ogni cambio di stato (controllo, download, errore…)
+    osserva: (callback) => {
+      const gestore = (_ev, stato) => callback(stato)
+      ipcRenderer.on('agg:stato', gestore)
+      return () => ipcRenderer.removeListener('agg:stato', gestore)
+    },
+  },
   versione: () => ipcRenderer.invoke('app:versione'),
 })
