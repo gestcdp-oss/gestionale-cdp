@@ -113,7 +113,7 @@ export default function ImmobiliPage() {
   function selezionaImmobile(i: Immobile) {
     seleziona({ id: i.id, asset: i.asset, denominazione: i.denominazione })
     setToast(`Immobile selezionato: ${i.denominazione}`)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    scorriInCima()
   }
 
   // ---- inserimento ----
@@ -527,6 +527,13 @@ export default function ImmobiliPage() {
       )}
     </div>
   )
+}
+
+/** Riporta in cima l'area dei contenuti (che scorre al posto della finestra). */
+function scorriInCima() {
+  const riquadro = document.getElementById('contenuto')
+  if (riquadro) riquadro.scrollTo({ top: 0, behavior: 'smooth' })
+  else window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 function msgErrore(error: { code?: string; message: string }): string {

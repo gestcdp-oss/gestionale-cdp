@@ -17,6 +17,8 @@ export type Utente = {
   ruolo: 'admin' | 'utente'
   attivo: boolean
   creato_il?: string
+  /** true per l'amministratore permanente (non eliminabile né declassabile) */
+  permanente?: boolean
 }
 
 export type NuovoUtente = {

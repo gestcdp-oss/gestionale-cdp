@@ -26,9 +26,11 @@ export default function Layout() {
   const { tema, impostaTema } = usePreferenze()
 
   return (
-    <div className="flex min-h-full flex-col bg-cielo-100">
+    // Layout a schermo fisso: header e menù restano sempre visibili,
+    // scorre soltanto l'area dei contenuti.
+    <div className="flex h-screen flex-col overflow-hidden bg-cielo-100">
       {/* HEADER */}
-      <header className="flex items-center justify-between gap-4 border-b border-cielo-200 bg-panna px-4 py-2.5">
+      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-cielo-200 bg-panna px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-3">
           <Link to="/" className="flex shrink-0 items-center gap-2" title="Vai alla home">
             <img src={LOGO} alt="TR.A.V.I." className="h-9 w-9" />
@@ -97,9 +99,9 @@ export default function Layout() {
         </div>
       </header>
 
-      {/* CORPO: sidebar + contenuto */}
-      <div className="flex flex-1">
-        <aside className="w-56 shrink-0 border-r border-cielo-200 bg-sidebar p-3">
+      {/* CORPO: menù + contenuto */}
+      <div className="flex flex-1 overflow-hidden">
+        <aside className="w-56 shrink-0 overflow-y-auto border-r border-cielo-200 bg-sidebar p-3">
           <Gruppo titolo="Anagrafiche" />
           <VoceMenu to="/immobili" label="Immobili" />
 
@@ -122,7 +124,8 @@ export default function Layout() {
           )}
         </aside>
 
-        <main className="min-w-0 flex-1 p-6">
+        {/* id="contenuto": è questo il riquadro che scorre (vedi scorriInCima) */}
+        <main id="contenuto" className="min-w-0 flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>
       </div>

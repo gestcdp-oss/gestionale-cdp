@@ -143,6 +143,14 @@ function richiediAdmin() {
   return s
 }
 
+// Amministratore permanente: non può essere eliminato, declassato o disattivato
+// da nessuno (nemmeno da sé stesso). Serve a non restare mai fuori dal programma.
+const ADMIN_PERMANENTE = 'marabelli.s@gmail.com'
+
+function ePermanente(email) {
+  return String(email || '').trim().toLowerCase() === ADMIN_PERMANENTE
+}
+
 // ---------- password ----------
 function calcolaHash(password, salt) {
   return crypto.scryptSync(String(password), salt, 64).toString('hex')
@@ -178,11 +186,76 @@ function inserisciUtente({ nome, cognome, email, password, ruolo }) {
   const pwd = validaPassword(password)
   const salt = crypto.randomBytes(16).toString('hex')
   const id = crypto.randomUUID()
+  // l'amministratore permanente è sempre amministratore
+  const liv = ePermanente(mail) || ruolo === 'admin' ? 'admin' : 'utente'
   db.prepare(
     `insert into utenti (id, nome, cognome, email, pwd_hash, pwd_salt, ruolo)
      values (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, pulisci(nome), pulisci(cognome), mail.toLowerCase(), calcolaHash(pwd, salt), salt, ruolo === 'admin' ? 'admin' : 'utente')
+  ).run(id, pulisci(nome), pulisci(cognome), mail.toLowerCase(), calcolaHash(pwd, salt), salt, liv)
   return id
+}
+
+// ---------- operazioni sugli utenti (con la sessione come parametro: testabili) ----------
+function elencoUtenti(s) {
+  // solo gli amministratori vedono l'elenco degli utenti registrati
+  if (!s || s.ruolo !== 'admin') throw new Error('Operazione riservata agli amministratori.')
+  return db
+    .prepare('select id, nome, cognome, email, ruolo, attivo, creato_il from utenti order by lower(cognome), lower(nome)')
+    .all()
+    .map((u) => ({ ...u, attivo: !!u.attivo, permanente: ePermanente(u.email) }))
+}
+
+function aggiornaUtente(s, id, campi) {
+  if (!s) throw new Error('Sessione non attiva.')
+  // ognuno può modificare i propri dati; solo l'admin può modificare gli altri
+  if (s.id !== id && s.ruolo !== 'admin') throw new Error('Operazione riservata agli amministratori.')
+  const attuale = db.prepare('select * from utenti where id = ?').get(id)
+  if (!attuale) throw new Error('Utente non trovato.')
+
+  const mail = pulisci(campi.email)
+  if (!mail) throw new Error("L'indirizzo email (nome utente) è obbligatorio.")
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) throw new Error('Indirizzo email non valido.')
+
+  let ruolo = s.ruolo === 'admin' && campi.ruolo ? (campi.ruolo === 'admin' ? 'admin' : 'utente') : undefined
+  let email = mail.toLowerCase()
+
+  if (ePermanente(attuale.email)) {
+    // l'amministratore permanente resta tale: email e ruolo non si toccano
+    if (email !== String(attuale.email).toLowerCase()) {
+      throw new Error("L'amministratore permanente non può cambiare indirizzo email.")
+    }
+    ruolo = 'admin'
+  }
+
+  // non lasciare il programma senza amministratori
+  if (ruolo === 'utente') {
+    const admin = db.prepare("select count(*) as n from utenti where ruolo = 'admin' and id <> ?").get(id).n
+    if (admin === 0) throw new Error('Deve restare almeno un amministratore.')
+  }
+
+  db.prepare(
+    `update utenti
+        set nome = ?, cognome = ?, email = ?, ruolo = coalesce(?, ruolo), aggiornato_il = datetime('now')
+      where id = ?`,
+  ).run(pulisci(campi.nome), pulisci(campi.cognome), email, ruolo ?? null, id)
+  return null
+}
+
+function eliminaUtente(s, id) {
+  if (!s || s.ruolo !== 'admin') throw new Error('Operazione riservata agli amministratori.')
+  if (s.id === id) throw new Error('Non puoi eliminare te stesso.')
+  const u = db.prepare('select email, ruolo from utenti where id = ?').get(id)
+  if (!u) throw new Error('Utente non trovato.')
+  if (ePermanente(u.email)) {
+    throw new Error("Questo è l'amministratore permanente: non può essere eliminato.")
+  }
+  if (u.ruolo === 'admin') {
+    const admin = db.prepare("select count(*) as n from utenti where ruolo = 'admin' and id <> ?").get(id).n
+    if (admin === 0) throw new Error('Deve restare almeno un amministratore.')
+  }
+  db.prepare('delete from preferenze where utente_id = ?').run(id)
+  db.prepare('delete from utenti where id = ?').run(id)
+  return null
 }
 
 function contaUtenti() {
@@ -245,15 +318,7 @@ ipcMain.handle('auth:cambia-password', (_ev, { vecchia, nuova }) =>
 )
 
 // ---------- IPC: utenti ----------
-ipcMain.handle('utenti:list', () =>
-  rispondi(() => {
-    richiediSessione()
-    return db
-      .prepare('select id, nome, cognome, email, ruolo, attivo, creato_il from utenti order by lower(cognome), lower(nome)')
-      .all()
-      .map((u) => ({ ...u, attivo: !!u.attivo }))
-  }),
-)
+ipcMain.handle('utenti:list', () => rispondi(() => elencoUtenti(richiediSessione())))
 
 ipcMain.handle('utenti:insert', (_ev, r) =>
   rispondi(() => {
@@ -265,23 +330,7 @@ ipcMain.handle('utenti:insert', (_ev, r) =>
 
 ipcMain.handle('utenti:update', (_ev, { id, campi }) =>
   rispondi(() => {
-    const s = richiediSessione()
-    // ognuno può modificare i propri dati; solo l'admin può modificare gli altri
-    if (s.id !== id && s.ruolo !== 'admin') throw new Error('Operazione riservata agli amministratori.')
-    const mail = pulisci(campi.email)
-    if (!mail) throw new Error("L'indirizzo email (nome utente) è obbligatorio.")
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) throw new Error('Indirizzo email non valido.')
-    const ruolo = s.ruolo === 'admin' && campi.ruolo ? (campi.ruolo === 'admin' ? 'admin' : 'utente') : undefined
-    // non lasciare il programma senza amministratori
-    if (ruolo === 'utente') {
-      const admin = db.prepare("select count(*) as n from utenti where ruolo = 'admin' and id <> ?").get(id).n
-      if (admin === 0) throw new Error('Deve restare almeno un amministratore.')
-    }
-    db.prepare(
-      `update utenti
-          set nome = ?, cognome = ?, email = ?, ruolo = coalesce(?, ruolo), aggiornato_il = datetime('now')
-        where id = ?`,
-    ).run(pulisci(campi.nome), pulisci(campi.cognome), mail.toLowerCase(), ruolo ?? null, id)
+    aggiornaUtente(richiediSessione(), id, campi)
     if (sessione && sessione.id === id) {
       const u = db.prepare('select * from utenti where id = ?').get(id)
       sessione = profiloPubblico(u)
@@ -294,7 +343,11 @@ ipcMain.handle('utenti:update', (_ev, { id, campi }) =>
 // (le password non sono recuperabili: si possono solo reimpostare).
 ipcMain.handle('utenti:reset-password', (_ev, { id, nuova }) =>
   rispondi(() => {
-    richiediAdmin()
+    const s = richiediAdmin()
+    const bersaglio = db.prepare('select email from utenti where id = ?').get(id)
+    if (bersaglio && ePermanente(bersaglio.email) && s.id !== id) {
+      throw new Error("Solo l'amministratore permanente può cambiare la propria password.")
+    }
     const pwd = validaPassword(nuova)
     const salt = crypto.randomBytes(16).toString('hex')
     const info = db
@@ -305,21 +358,7 @@ ipcMain.handle('utenti:reset-password', (_ev, { id, nuova }) =>
   }),
 )
 
-ipcMain.handle('utenti:delete', (_ev, id) =>
-  rispondi(() => {
-    const s = richiediAdmin()
-    if (s.id === id) throw new Error('Non puoi eliminare te stesso.')
-    const u = db.prepare('select ruolo from utenti where id = ?').get(id)
-    if (!u) throw new Error('Utente non trovato.')
-    if (u.ruolo === 'admin') {
-      const admin = db.prepare("select count(*) as n from utenti where ruolo = 'admin' and id <> ?").get(id).n
-      if (admin === 0) throw new Error('Deve restare almeno un amministratore.')
-    }
-    db.prepare('delete from preferenze where utente_id = ?').run(id)
-    db.prepare('delete from utenti where id = ?').run(id)
-    return null
-  }),
-)
+ipcMain.handle('utenti:delete', (_ev, id) => rispondi(() => eliminaUtente(richiediSessione(), id)))
 
 // ---------- IPC: preferenze (per utente) ----------
 ipcMain.handle('pref:tutte', () =>
@@ -444,6 +483,53 @@ function smoke() {
     }
     rapporto.password_corta_respinta = corta
 
+    // --- permessi: solo gli amministratori vedono l'elenco utenti
+    const sessioneAdmin = { id: uid, ruolo: 'admin', email: mail }
+    const sessioneUtente = { id: 'x', ruolo: 'utente', email: 'tale@test.local' }
+    rapporto.elenco_admin_ok = Array.isArray(elencoUtenti(sessioneAdmin))
+    let negato = false
+    try {
+      elencoUtenti(sessioneUtente)
+    } catch {
+      negato = true
+    }
+    rapporto.elenco_negato_a_utente = negato
+
+    // --- amministratore permanente: non eliminabile, non declassabile
+    const idPerm = inserisciUtente({
+      nome: 'Permanente',
+      cognome: 'Admin',
+      email: ADMIN_PERMANENTE,
+      password: 'password123',
+      ruolo: 'utente', // deve diventare admin comunque
+    })
+    const perm = db.prepare('select * from utenti where id = ?').get(idPerm)
+    rapporto.permanente_e_admin = perm.ruolo === 'admin'
+    let elimNegata = false
+    try {
+      eliminaUtente(sessioneAdmin, idPerm)
+    } catch {
+      elimNegata = true
+    }
+    rapporto.permanente_non_eliminabile = elimNegata
+    let declassNegato = false
+    try {
+      aggiornaUtente(sessioneAdmin, idPerm, { nome: 'P', cognome: 'A', email: ADMIN_PERMANENTE, ruolo: 'utente' })
+    } catch {
+      declassNegato = true
+    }
+    const permDopo = db.prepare('select ruolo from utenti where id = ?').get(idPerm)
+    rapporto.permanente_resta_admin = permDopo.ruolo === 'admin' || declassNegato
+    // un utente normale non può eliminare nessuno
+    let elimUtenteNegata = false
+    try {
+      eliminaUtente(sessioneUtente, uid)
+    } catch {
+      elimUtenteNegata = true
+    }
+    rapporto.utente_non_puo_eliminare = elimUtenteNegata
+    db.prepare('delete from utenti where id = ?').run(idPerm)
+
     // --- preferenze
     db.prepare('insert or replace into preferenze (utente_id, chiave, valore) values (?, ?, ?)').run(uid, 'tema', 'bordeaux')
     db.prepare('insert or replace into preferenze (utente_id, chiave, valore) values (?, ?, ?)').run(uid, 'per_pagina', '30')
@@ -460,6 +546,12 @@ function smoke() {
       rapporto.password_sbagliata_respinta &&
       rapporto.hash_non_in_chiaro &&
       rapporto.password_corta_respinta &&
+      rapporto.elenco_admin_ok &&
+      rapporto.elenco_negato_a_utente &&
+      rapporto.permanente_e_admin &&
+      rapporto.permanente_non_eliminabile &&
+      rapporto.permanente_resta_admin &&
+      rapporto.utente_non_puo_eliminare &&
       rapporto.preferenze.tema === 'bordeaux' &&
       rapporto.preferenze.per_pagina === '30' &&
       rapporto.dopo_delete === rapporto.immobili_iniziali

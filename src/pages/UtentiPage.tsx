@@ -44,7 +44,13 @@ export default function UtentiPage() {
   const [eliminaTarget, setEliminaTarget] = useState<Utente | null>(null)
   const [eliminaErrore, setEliminaErrore] = useState<string | null>(null)
 
+  // l'elenco degli utenti registrati è riservato agli amministratori
   async function carica() {
+    if (!admin) {
+      setUtenti([])
+      setCaricamento(false)
+      return
+    }
     setCaricamento(true)
     const { data } = await dbLocale.utenti.list()
     if (data) setUtenti(data)
@@ -53,7 +59,8 @@ export default function UtentiPage() {
 
   useEffect(() => {
     void carica()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admin])
 
   useEffect(() => {
     if (utente) {
@@ -300,7 +307,8 @@ export default function UtentiPage() {
         </section>
       )}
 
-      {/* --- elenco utenti --- */}
+      {/* --- elenco utenti: solo per gli amministratori --- */}
+      {admin && (
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">
           Utenti registrati {caricamento ? '' : `(${utenti.length})`}
@@ -339,7 +347,8 @@ export default function UtentiPage() {
                       <td className="px-2 py-1.5">
                         <select
                           value={editForm.ruolo}
-                          disabled={!admin}
+                          disabled={!admin || u.permanente}
+                          title={u.permanente ? 'Amministratore permanente: ruolo non modificabile' : undefined}
                           onChange={(e) => setEditForm({ ...editForm, ruolo: e.target.value as 'utente' | 'admin' })}
                           className={inputSm}
                         >
@@ -376,8 +385,18 @@ export default function UtentiPage() {
                       </td>
                       <td className="px-4 py-2">
                         {u.ruolo === 'admin' ? (
-                          <span className="rounded-full bg-cielo-100 px-2 py-0.5 text-xs font-medium text-cielo-700">
-                            amministratore
+                          <span className="flex flex-wrap items-center gap-1">
+                            <span className="rounded-full bg-cielo-100 px-2 py-0.5 text-xs font-medium text-cielo-700">
+                              amministratore
+                            </span>
+                            {u.permanente && (
+                              <span
+                                title="Amministratore permanente: non eliminabile né declassabile"
+                                className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
+                              >
+                                permanente
+                              </span>
+                            )}
                           </span>
                         ) : (
                           <span className="text-cielo-600">utente</span>
@@ -394,7 +413,7 @@ export default function UtentiPage() {
                               <IconaMatita />
                             </button>
                           )}
-                          {admin && (
+                          {admin && (!u.permanente || utente?.id === u.id) && (
                             <button
                               onClick={() => {
                                 setResetErrore(null)
@@ -407,7 +426,7 @@ export default function UtentiPage() {
                               <IconaChiave />
                             </button>
                           )}
-                          {admin && utente?.id !== u.id && (
+                          {admin && utente?.id !== u.id && !u.permanente && (
                             <button
                               onClick={() => {
                                 setEliminaErrore(null)
@@ -429,6 +448,7 @@ export default function UtentiPage() {
           </table>
         </div>
       </section>
+      )}
 
       {/* --- modale: reimposta password --- */}
       {resetTarget && (
