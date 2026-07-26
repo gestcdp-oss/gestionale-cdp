@@ -200,6 +200,8 @@ function creaScriptSostituzione(fileNuovo) {
   const script = path.join(dir, 'sostituisci.cmd')
   const backup = `${bersaglio}.precedente`
   const registro = path.join(dir, 'registro-sostituzione.txt')
+  // Nota: per le pause si usa "ping" e non "timeout", perché quest'ultimo
+  // pretende una console interattiva (e ne farebbe comparire una a ogni passo).
   const contenuto = `@echo off
 setlocal
 set "BERSAGLIO=${bersaglio}"
@@ -218,16 +220,16 @@ set /a TENTATIVI+=1
 if %TENTATIVI% GEQ 60 (
   echo [%TIME%] chiusura forzata >> "%LOG%"
   taskkill /F /IM TRAVI.exe >nul 2>&1
-  timeout /t 2 /nobreak >nul
+  ping -n 3 127.0.0.1 >nul
   goto libero
 )
-timeout /t 1 /nobreak >nul
+ping -n 2 127.0.0.1 >nul
 goto attesa
 
 :libero
 rem Windows può tenere bloccato l'eseguibile ancora per qualche istante dopo la
 rem chiusura: si riprova più volte invece di arrendersi al primo tentativo.
-timeout /t 2 /nobreak >nul
+ping -n 3 127.0.0.1 >nul
 set /a PROVE=0
 
 :riprova
@@ -237,7 +239,7 @@ if not exist "%BERSAGLIO%" goto metti_nuovo
 set /a PROVE+=1
 echo [%TIME%] file ancora bloccato (tentativo %PROVE%) >> "%LOG%"
 if %PROVE% LSS 25 (
-  timeout /t 1 /nobreak >nul
+  ping -n 2 127.0.0.1 >nul
   goto riprova
 )
 echo [%TIME%] RINUNCIA: impossibile sostituire, riavvio la versione attuale >> "%LOG%"
@@ -254,24 +256,51 @@ if not exist "%BERSAGLIO%" (
 
 :riavvia
 start "" "%BERSAGLIO%"
-timeout /t 3 /nobreak >nul
+ping -n 4 127.0.0.1 >nul
 del /f /q "%BACKUP%" >nul 2>&1
+del /f /q "${path.join(dir, 'avvia-nascosto.vbs')}" >nul 2>&1
 del /f /q "%~f0" >nul 2>&1
 `
   fs.writeFileSync(script, contenuto, 'utf8')
   return script
 }
 
-/** Avvia lo script di sostituzione (l'app deve chiudersi subito dopo). */
+/**
+ * Avvia lo script di sostituzione (l'app deve chiudersi subito dopo).
+ * Viene lanciato tramite un piccolo script di sistema che lo esegue in modo
+ * completamente invisibile: senza questo accorgimento Windows farebbe comparire
+ * e sparire finestre nere del prompt dei comandi, che sembrano un errore.
+ */
 function avviaSostituzione(fileNuovo) {
   const script = creaScriptSostituzione(fileNuovo)
-  const p = spawn('cmd.exe', ['/c', script], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-    cwd: os.tmpdir(),
-  })
-  p.unref()
+  const dir = cartellaAppoggio()
+  const avviatore = path.join(dir, 'avvia-nascosto.vbs')
+
+  // metodo di riserva, se il sistema non permette lo script invisibile
+  const avvioDiretto = () => {
+    const q = spawn('cmd.exe', ['/c', script], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      cwd: os.tmpdir(),
+    })
+    q.unref()
+  }
+
+  try {
+    // "0" = finestra nascosta, "False" = non attendere la fine
+    fs.writeFileSync(avviatore, `CreateObject("WScript.Shell").Run "cmd /c ""${script}""", 0, False\r\n`, 'utf8')
+    const p = spawn('wscript.exe', ['//B', '//Nologo', avviatore], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      cwd: os.tmpdir(),
+    })
+    p.on('error', avvioDiretto) // wscript assente o bloccato: si ripiega
+    p.unref()
+  } catch {
+    avvioDiretto()
+  }
 }
 
 module.exports = {
