@@ -2,7 +2,7 @@
 // App COMPLETAMENTE locale: database SQLite nella cartella "dati" accanto all'eseguibile.
 // Nessuna connessione a internet.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron')
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, screen } = require('electron')
 const agg = require('./aggiornamenti.cjs')
 const path = require('node:path')
 const fs = require('node:fs')
@@ -975,10 +975,57 @@ ipcMain.handle('agg:installa', async () => {
 })
 
 // ---------- finestra ----------
+// Dimensioni e posizione vengono ricordate, così il programma si riapre
+// esattamente come lo si è lasciato.
+const MISURE_PREDEFINITE = { width: 1360, height: 860 }
+
+function leggiGeometria() {
+  try {
+    const riga = db.prepare("select v from app_meta where k = 'finestra'").get()
+    if (!riga) return null
+    const g = JSON.parse(riga.v)
+    if (!g || typeof g.width !== 'number' || typeof g.height !== 'number') return null
+    // se nel frattempo sono cambiati gli schermi, la posizione salvata
+    // potrebbe cadere fuori dall'area visibile: in quel caso la si scarta
+    if (typeof g.x === 'number' && typeof g.y === 'number') {
+      const schermi = screen.getAllDisplays()
+      const visibile = schermi.some(
+        (s) =>
+          g.x + g.width > s.bounds.x &&
+          g.x < s.bounds.x + s.bounds.width &&
+          g.y + g.height > s.bounds.y &&
+          g.y < s.bounds.y + s.bounds.height,
+      )
+      if (!visibile) {
+        delete g.x
+        delete g.y
+      }
+    }
+    return g
+  } catch {
+    return null
+  }
+}
+
+function salvaGeometria(win) {
+  try {
+    if (!win || win.isDestroyed() || !db) return
+    const massimizzata = win.isMaximized()
+    const b = massimizzata ? win.getNormalBounds() : win.getBounds()
+    db.prepare("insert or replace into app_meta (k, v) values ('finestra', ?)").run(
+      JSON.stringify({ x: b.x, y: b.y, width: b.width, height: b.height, massimizzata }),
+    )
+  } catch {
+    /* non deve mai disturbare l'uso del programma */
+  }
+}
+
 function creaFinestra() {
+  const g = leggiGeometria()
   const win = new BrowserWindow({
-    width: 1360,
-    height: 860,
+    width: g?.width ?? MISURE_PREDEFINITE.width,
+    height: g?.height ?? MISURE_PREDEFINITE.height,
+    ...(typeof g?.x === 'number' && typeof g?.y === 'number' ? { x: g.x, y: g.y } : {}),
     minWidth: 1000,
     minHeight: 640,
     title: 'TR.A.V.I. - Tracciamento Attività e Verifica Immobili',
@@ -990,6 +1037,14 @@ function creaFinestra() {
       nodeIntegration: false,
     },
   })
+  if (g?.massimizzata) win.maximize()
+
+  // si registra a ogni cambiamento (non solo alla chiusura: l'app può
+  // terminare anche durante un aggiornamento)
+  for (const evento of ['resized', 'moved', 'maximize', 'unmaximize']) {
+    win.on(evento, () => salvaGeometria(win))
+  }
+  win.on('close', () => salvaGeometria(win))
   Menu.setApplicationMenu(null)
 
   // Diagnostica: tutto ciò che accade nella finestra finisce nel registro,
