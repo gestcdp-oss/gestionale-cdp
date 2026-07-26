@@ -1,13 +1,4 @@
 /// <reference types="vite/client" />
 
-interface ImportMetaEnv {
-  readonly VITE_SUPABASE_URL?: string
-  readonly VITE_SUPABASE_ANON_KEY?: string
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv
-}
-
-// Iniettata da vite.config.ts (short SHA del commit di build).
+// Iniettata da vite.config.ts (versione da package.json).
 declare const __APP_VERSION__: string

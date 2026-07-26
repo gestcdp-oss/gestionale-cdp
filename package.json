@@ -1,30 +1,65 @@
 {
-  "name": "gestionale-cdp",
+  "name": "travi-gest",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "TR.A.V.I. — Tracciamento Attività Verifica Immobili (app desktop locale)",
+  "author": "TRAVI",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "db:schema": "node scripts/run-sql.mjs --file supabase/schema.sql"
+    "app": "npm run build && electron .",
+    "smoke": "npm run build && electron . --smoke",
+    "icona": "node scripts/genera-icona.mjs",
+    "dist": "npm run build && electron-builder --win",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4",
+    "better-sqlite3": "^12.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.0"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
     "pg": "^8.22.0",
+    "png-to-ico": "^2.1.8",
     "postcss": "^8.4.40",
     "tailwindcss": "^3.4.7",
     "typescript": "^5.5.4",
     "vite": "^5.3.5"
+  },
+  "build": {
+    "appId": "it.travi.gest",
+    "productName": "TRAVI",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "electron/**"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "dir"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "portable": {
+      "artifactName": "TRAVI.exe"
+    }
   }
 }

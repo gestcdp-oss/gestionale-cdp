@@ -23,6 +23,11 @@ credentials*.json
 *.xls
 *.xlsm
 
+# app desktop locale: database, pacchetti generati e seed con dati aziendali
+dati/
+release/
+electron/seed-immobili.json
+
 # sistema
 .DS_Store
 Thumbs.db

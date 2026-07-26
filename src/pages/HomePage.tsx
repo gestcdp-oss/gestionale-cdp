@@ -1,4 +1,4 @@
-const LOGO = `${import.meta.env.BASE_URL}logo.svg`
+const LOGO = './logo.svg'
 
 export default function HomePage() {
   return (

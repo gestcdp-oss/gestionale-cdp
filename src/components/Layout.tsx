@@ -1,11 +1,9 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
 import { useSelezione } from '../hooks/useSelezione'
 
-const LOGO = `${import.meta.env.BASE_URL}logo.svg`
+const LOGO = './logo.svg'
 
 export default function Layout() {
-  const { profilo, esci } = useAuth()
   const { immobile, seleziona } = useSelezione()
 
   return (
@@ -31,18 +29,7 @@ export default function Layout() {
             </span>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-3 text-sm">
-          <span className="hidden text-cielo-700 sm:inline">
-            {profilo?.nome || profilo?.email}
-            {profilo?.ruolo === 'admin' && <span className="ml-1 text-emerald-600">· admin</span>}
-          </span>
-          <button
-            onClick={() => void esci()}
-            className="rounded-lg border border-cielo-300 bg-white/60 px-3 py-1.5 text-cielo-700 transition hover:bg-white"
-          >
-            Esci
-          </button>
-        </div>
+        <span className="shrink-0 text-xs text-cielo-400">v{__APP_VERSION__}</span>
       </header>
 
       {/* CORPO: sidebar + contenuto */}

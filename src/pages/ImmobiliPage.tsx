@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
-import { supabase } from '../lib/supabase'
+import { dbLocale } from '../lib/db'
 import { useSelezione } from '../hooks/useSelezione'
 import type { Immobile } from '../lib/tipi'
 
@@ -43,10 +43,8 @@ export default function ImmobiliPage() {
   // Dati estratti UNA sola volta; ricerca/ordinamento/paginazione sono locali.
   async function carica() {
     setCaricamento(true)
-    const { data, error } = await supabase
-      .from('immobili')
-      .select('id, asset, denominazione, portafoglio, localizzazione, creato_il')
-    if (!error && data) setImmobili(data as Immobile[])
+    const { data, error } = await dbLocale.immobili.list()
+    if (!error && data) setImmobili(data)
     setCaricamento(false)
   }
 
@@ -131,7 +129,7 @@ export default function ImmobiliPage() {
       return
     }
     setSalvataggio(true)
-    const { error } = await supabase.from('immobili').insert({
+    const { error } = await dbLocale.immobili.insert({
       asset: form.asset.trim(),
       denominazione: form.denominazione.trim(),
       portafoglio: form.portafoglio.trim() || null,
@@ -177,15 +175,12 @@ export default function ImmobiliPage() {
       return
     }
     setSalvataggioMod(true)
-    const { error } = await supabase
-      .from('immobili')
-      .update({
-        asset: editForm.asset.trim(),
-        denominazione: editForm.denominazione.trim(),
-        portafoglio: editForm.portafoglio.trim() || null,
-        localizzazione: editForm.localizzazione.trim() || null,
-      })
-      .eq('id', editId)
+    const { error } = await dbLocale.immobili.update(editId, {
+      asset: editForm.asset.trim(),
+      denominazione: editForm.denominazione.trim(),
+      portafoglio: editForm.portafoglio.trim() || null,
+      localizzazione: editForm.localizzazione.trim() || null,
+    })
     setSalvataggioMod(false)
     if (error) {
       setEditErrore(msgErrore(error))
@@ -204,7 +199,7 @@ export default function ImmobiliPage() {
     if (!eliminaTarget) return
     setEliminaErrore(null)
     setEliminando(true)
-    const { error } = await supabase.from('immobili').delete().eq('id', eliminaTarget.id)
+    const { error } = await dbLocale.immobili.remove(eliminaTarget.id)
     setEliminando(false)
     if (error) {
       setEliminaErrore(`Errore nell'eliminazione: ${error.message}`)
