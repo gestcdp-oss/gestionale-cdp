@@ -5,6 +5,8 @@ import type { Utente, AnteprimaImport } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
 import { usePreferenze } from '../hooks/usePreferenze'
 import Collegamenti from '../components/Collegamenti'
+import ArchivioFilePannello from '../components/ArchivioFile'
+import { supportaArchivioFile } from '../lib/dbBrowser'
 
 const inputCls =
   'w-full rounded-lg border border-cielo-300 bg-white px-3 py-2 text-sm text-cielo-800 outline-none transition focus:border-cielo-400 focus:ring-2 focus:ring-cielo-100'
@@ -368,6 +370,19 @@ export default function UtentiPage() {
         >
           <Collegamenti />
         </Pannello>
+
+        {/* ---------------- archivio su file (solo versione browser) ---------------- */}
+        {supportaArchivioFile() && (
+          <Pannello
+            id="archivio"
+            aperto={aperto}
+            onApri={apri}
+            titolo="Archivio su file"
+            descrizione="Salva l'archivio in un file vero del computer: sopravvive alle pulizie del browser e si può aprire da qualsiasi browser."
+          >
+            <ArchivioFilePannello />
+          </Pannello>
+        )}
 
         {/* ---------------- dati ---------------- */}
         <Pannello

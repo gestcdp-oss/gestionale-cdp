@@ -15,7 +15,24 @@ import type { Immobile } from './tipi'
 
 const ADMIN_PERMANENTE = 'marabelli.s@gmail.com'
 const FORMATO_ESPORTAZIONE = 'travi-dati-1'
+const FORMATO_ARCHIVIO = 'travi-archivio-1'
 const CHIAVE_SESSIONE = 'travi_sessione'
+
+// --- accesso ai file del computer (Edge/Chrome): dichiarazioni minime ---
+type PermessoFile = 'granted' | 'denied' | 'prompt'
+interface HandleFile {
+  name: string
+  getFile(): Promise<File>
+  createWritable(): Promise<{ write(d: string): Promise<void>; close(): Promise<void> }>
+  queryPermission?(d: { mode: 'readwrite' }): Promise<PermessoFile>
+  requestPermission?(d: { mode: 'readwrite' }): Promise<PermessoFile>
+}
+declare global {
+  interface Window {
+    showSaveFilePicker?: (opzioni?: unknown) => Promise<HandleFile>
+    showOpenFilePicker?: (opzioni?: unknown) => Promise<HandleFile[]>
+  }
+}
 
 // ---------------------------------------------------------------- IndexedDB
 
@@ -47,32 +64,210 @@ async function tutti<T>(store: string): Promise<T[]> {
 
 async function metti(store: string, valore: unknown): Promise<void> {
   const db = await apriIdb()
-  return new Promise((risolvi, rifiuta) => {
+  await new Promise<void>((risolvi, rifiuta) => {
     const tx = db.transaction(store, 'readwrite')
     tx.objectStore(store).put(valore)
     tx.oncomplete = () => risolvi()
     tx.onerror = () => rifiuta(tx.error)
   })
+  if (store !== 'meta') programmaSpecchio()
 }
 
 async function togli(store: string, chiave: string): Promise<void> {
   const db = await apriIdb()
-  return new Promise((risolvi, rifiuta) => {
+  await new Promise<void>((risolvi, rifiuta) => {
     const tx = db.transaction(store, 'readwrite')
     tx.objectStore(store).delete(chiave)
     tx.oncomplete = () => risolvi()
     tx.onerror = () => rifiuta(tx.error)
   })
+  if (store !== 'meta') programmaSpecchio()
 }
 
 async function svuota(store: string): Promise<void> {
   const db = await apriIdb()
-  return new Promise((risolvi, rifiuta) => {
+  await new Promise<void>((risolvi, rifiuta) => {
     const tx = db.transaction(store, 'readwrite')
     tx.objectStore(store).clear()
     tx.oncomplete = () => risolvi()
     tx.onerror = () => rifiuta(tx.error)
   })
+  if (store !== 'meta') programmaSpecchio()
+}
+
+async function prendiMeta(k: string): Promise<{ k: string; [x: string]: unknown } | null> {
+  const db = await apriIdb()
+  return new Promise((risolvi, rifiuta) => {
+    const ric = db.transaction('meta', 'readonly').objectStore('meta').get(k)
+    ric.onsuccess = () => risolvi((ric.result as { k: string }) ?? null)
+    ric.onerror = () => rifiuta(ric.error)
+  })
+}
+
+// ------------------------------------------------- archivio su FILE del computer
+// L'archivio primario resta nel browser (veloce); in più, se l'utente collega un
+// file, TUTTO viene specchiato lì a ogni modifica. Il file sul disco sopravvive
+// alle pulizie del browser e può essere aperto da un browser diverso.
+
+export function supportaArchivioFile(): boolean {
+  return !window.travi && typeof window.showSaveFilePicker === 'function'
+}
+
+async function leggiHandle(): Promise<HandleFile | null> {
+  try {
+    const riga = await prendiMeta('fileArchivio')
+    return (riga?.h as HandleFile) ?? null
+  } catch {
+    return null
+  }
+}
+
+async function generaDump(): Promise<string> {
+  const [utenti, immobili, preferenze] = await Promise.all([
+    tutti<UtenteArchivio>('utenti'),
+    tutti<Immobile>('immobili'),
+    tutti<{ k: string; v: string }>('preferenze'),
+  ])
+  return JSON.stringify(
+    {
+      formato: FORMATO_ARCHIVIO,
+      versione_app: __APP_VERSION__,
+      salvato_il: new Date().toISOString(),
+      utenti,
+      immobili,
+      preferenze,
+    },
+    null,
+    1,
+  )
+}
+
+let attesaSpecchio: number | undefined
+
+function programmaSpecchio(): void {
+  if (!supportaArchivioFile()) return
+  window.clearTimeout(attesaSpecchio)
+  attesaSpecchio = window.setTimeout(() => void specchiaOra(false), 600)
+}
+
+/** Scrive l'archivio nel file collegato. Con `conRichiesta` può chiedere il permesso. */
+async function specchiaOra(conRichiesta: boolean): Promise<boolean> {
+  try {
+    const handle = await leggiHandle()
+    if (!handle) return false
+    let permesso: PermessoFile = (await handle.queryPermission?.({ mode: 'readwrite' })) ?? 'prompt'
+    if (permesso === 'prompt' && conRichiesta) {
+      permesso = (await handle.requestPermission?.({ mode: 'readwrite' })) ?? 'denied'
+    }
+    if (permesso !== 'granted') return false
+    const w = await handle.createWritable()
+    await w.write(await generaDump())
+    await w.close()
+    await metti('meta', { k: 'ultimoSalvataggioFile', v: new Date().toISOString() })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export type StatoArchivioFile = {
+  supportato: boolean
+  collegato: boolean
+  nomeFile: string
+  ultimoSalvataggio: string
+  permesso: PermessoFile | 'n/d'
+}
+
+export async function statoArchivioFile(): Promise<StatoArchivioFile> {
+  if (!supportaArchivioFile()) {
+    return { supportato: false, collegato: false, nomeFile: '', ultimoSalvataggio: '', permesso: 'n/d' }
+  }
+  const handle = await leggiHandle()
+  const ultimo = await prendiMeta('ultimoSalvataggioFile')
+  return {
+    supportato: true,
+    collegato: Boolean(handle),
+    nomeFile: handle?.name ?? '',
+    ultimoSalvataggio: String(ultimo?.v ?? ''),
+    permesso: handle ? ((await handle.queryPermission?.({ mode: 'readwrite' })) ?? 'prompt') : 'n/d',
+  }
+}
+
+/** Crea (o sceglie) il file dell'archivio e ci salva subito tutto. */
+export async function creaFileArchivio(): Promise<{ ok: boolean; messaggio: string }> {
+  try {
+    const handle = await window.showSaveFilePicker!({
+      suggestedName: 'TRAVI-archivio.travidb',
+      startIn: 'documents',
+      types: [{ description: 'Archivio TR.A.V.I.', accept: { 'application/json': ['.travidb'] } }],
+    })
+    await metti('meta', { k: 'fileArchivio', h: handle })
+    const scritto = await specchiaOra(true)
+    return scritto
+      ? { ok: true, messaggio: `Archivio collegato: ${handle.name}. D'ora in poi ogni modifica viene salvata anche lì.` }
+      : { ok: false, messaggio: 'File scelto ma scrittura non riuscita: riprova con "Salva ora".' }
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') return { ok: false, messaggio: '' }
+    return { ok: false, messaggio: String((e as Error)?.message ?? e) }
+  }
+}
+
+/** Apre un archivio esistente e lo carica al posto dei dati di questo browser. */
+export async function apriArchivioDaFile(): Promise<{ ok: boolean; messaggio: string; utenti?: number; immobili?: number }> {
+  try {
+    const [handle] = await window.showOpenFilePicker!({
+      types: [{ description: 'Archivio TR.A.V.I.', accept: { 'application/json': ['.travidb'] } }],
+    })
+    if (!handle) return { ok: false, messaggio: '' }
+    const testo = await (await handle.getFile()).text()
+    let dump: {
+      formato?: string
+      utenti?: UtenteArchivio[]
+      immobili?: Immobile[]
+      preferenze?: { k: string; v: string }[]
+    }
+    try {
+      dump = JSON.parse(testo)
+    } catch {
+      throw new Error('Il file non è un archivio TR.A.V.I. valido.')
+    }
+    if (dump.formato !== FORMATO_ARCHIVIO || !Array.isArray(dump.utenti)) {
+      throw new Error('Il file non è un archivio TR.A.V.I. valido.')
+    }
+    await svuota('utenti')
+    await svuota('immobili')
+    await svuota('preferenze')
+    for (const u of dump.utenti) await metti('utenti', u)
+    for (const i of dump.immobili ?? []) await metti('immobili', i)
+    for (const p of dump.preferenze ?? []) await metti('preferenze', p)
+    await metti('meta', { k: 'fileArchivio', h: handle })
+    scriviSessione(null) // si rientra con le credenziali contenute nell'archivio
+    return {
+      ok: true,
+      messaggio: `Archivio "${handle.name}" caricato.`,
+      utenti: dump.utenti.length,
+      immobili: (dump.immobili ?? []).length,
+    }
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') return { ok: false, messaggio: '' }
+    return { ok: false, messaggio: String((e as Error)?.message ?? e) }
+  }
+}
+
+export async function salvaArchivioOra(): Promise<{ ok: boolean; messaggio: string }> {
+  const scritto = await specchiaOra(true)
+  return scritto
+    ? { ok: true, messaggio: 'Archivio salvato sul file.' }
+    : { ok: false, messaggio: 'Salvataggio non riuscito: nessun file collegato o permesso negato.' }
+}
+
+export async function scollegaFileArchivio(): Promise<void> {
+  try {
+    await togli('meta', 'fileArchivio')
+    await togli('meta', 'ultimoSalvataggioFile')
+  } catch {
+    /* ignora */
+  }
 }
 
 // ---------------------------------------------------------------- password
@@ -275,6 +470,9 @@ export function creaApiBrowser(): ApiTravi {
           }
           if (!u.attivo) throw new Error('Utente disattivato: contatta un amministratore.')
           scriviSessione({ id: u.id })
+          // il click di accesso è il momento giusto per rinnovare il permesso
+          // sul file dell'archivio (se il browser lo richiede) e riallinearlo
+          void specchiaOra(true)
           return pubblico(u)
         }),
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useAuth } from '../hooks/useAuth'
+import { supportaArchivioFile, apriArchivioDaFile } from '../lib/dbBrowser'
 
 const LOGO = './logo.svg'
 const inputCls =
@@ -80,10 +81,21 @@ function FormAccesso() {
 }
 
 function FormPrimoAvvio() {
-  const { registraPrimoUtente } = useAuth()
+  const { registraPrimoUtente, ricarica } = useAuth()
   const [c, setC] = useState({ nome: '', cognome: '', email: '', password: '', ripeti: '' })
   const [errore, setErrore] = useState<string | null>(null)
   const [attesa, setAttesa] = useState(false)
+
+  // cambio browser o dati puliti: si riparte dal file dell'archivio
+  async function ripristinaDaFile() {
+    setErrore(null)
+    const esito = await apriArchivioDaFile()
+    if (!esito.ok) {
+      if (esito.messaggio) setErrore(esito.messaggio)
+      return
+    }
+    await ricarica() // ora gli utenti esistono: compare il modulo di accesso
+  }
 
   async function invia(e: FormEvent) {
     e.preventDefault()
@@ -155,6 +167,21 @@ function FormPrimoAvvio() {
       >
         {attesa ? 'Creazione…' : 'Crea amministratore ed entra'}
       </button>
+
+      {supportaArchivioFile() && (
+        <div className="border-t border-cielo-200 pt-4 text-center">
+          <p className="text-xs text-cielo-500">
+            Hai già usato TR.A.V.I. su questo computer (altro browser o dati puliti)?
+          </p>
+          <button
+            type="button"
+            onClick={() => void ripristinaDaFile()}
+            className="mt-2 w-full rounded-lg border border-cielo-300 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50"
+          >
+            Apri l'archivio dal file salvato
+          </button>
+        </div>
+      )}
     </form>
   )
 }
