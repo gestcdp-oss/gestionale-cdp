@@ -240,6 +240,71 @@ async function sincronizzaDaFile(conRichiesta: boolean): Promise<'importato' | '
   }
 }
 
+// ------------------------------------------------- aggiornamento del programma
+// I dati non sono mai in cache; il PROGRAMMA però sì (il browser può tenere la
+// pagina vecchia fino a ~10 minuti). Qui si controlla version.json in rete e,
+// se è diversa, si ricarica con un indirizzo "sporcato" che scavalca la cache.
+
+export function eModalitaBrowser(): boolean {
+  return !window.travi
+}
+
+export function urlConVersione(v: string): string {
+  const { origin, pathname, hash } = window.location
+  return `${origin}${pathname}?v=${encodeURIComponent(v)}${hash}`
+}
+
+async function versioneInRete(): Promise<string | null> {
+  try {
+    const r = await fetch(`./version.json?_=${Date.now()}`, { cache: 'no-store' })
+    const d = (await r.json()) as { version?: string }
+    return typeof d.version === 'string' ? d.version : null
+  } catch {
+    return null
+  }
+}
+
+function avvisaNuovaVersione(v: string): void {
+  try {
+    window.dispatchEvent(new CustomEvent('travi-versione-nuova', { detail: v }))
+  } catch {
+    /* ignora */
+  }
+}
+
+function agganciaAggiornamentoWeb(): void {
+  // all'AVVIO: se in rete c'è una versione diversa, si ricarica subito
+  // (siamo prima di qualsiasi lavoro: il momento sicuro per farlo)
+  void (async () => {
+    const v = await versioneInRete()
+    if (!v || v === __APP_VERSION__) return
+    const chiave = `travi_ricaricato_${v}`
+    try {
+      if (sessionStorage.getItem(chiave)) {
+        // già provato in questa sessione: niente cicli, si avvisa soltanto
+        avvisaNuovaVersione(v)
+        return
+      }
+      sessionStorage.setItem(chiave, 'si')
+    } catch {
+      /* ignora */
+    }
+    window.location.replace(urlConVersione(v))
+  })()
+
+  // DURANTE l'uso: controllo periodico e al ritorno sulla finestra → avviso
+  let ultimoControlloVersione = 0
+  const controlla = async () => {
+    const adesso = Date.now()
+    if (adesso - ultimoControlloVersione < 60000) return
+    ultimoControlloVersione = adesso
+    const v = await versioneInRete()
+    if (v && v !== __APP_VERSION__) avvisaNuovaVersione(v)
+  }
+  window.setInterval(() => void controlla(), 15 * 60 * 1000)
+  window.addEventListener('focus', () => void controlla())
+}
+
 // Riallineamento anche quando si TORNA sulla finestra (cambio scheda/app):
 // così, alternando i browser, i dati si aggiornano senza dover riaccedere.
 let ultimoControlloFile = 0
@@ -653,6 +718,7 @@ export function creaApiBrowser(): ApiTravi {
   }
   try {
     agganciaRiallineamento()
+    agganciaAggiornamentoWeb()
   } catch {
     /* ignora */
   }
@@ -1092,17 +1158,12 @@ export function creaApiBrowser(): ApiTravi {
           messaggio: '',
         })),
       // il pulsante della versione: se in rete c'è una versione nuova, ricarica
-      // la pagina (che È l'aggiornamento, nella versione browser)
+      // con l'indirizzo "sporcato" che scavalca qualsiasi cache
       controlla: () =>
         rispondi(async () => {
-          try {
-            const r = await fetch(`./version.json?_=${Date.now()}`, { cache: 'no-store' })
-            const dati = (await r.json()) as { version?: string }
-            if (dati.version && dati.version !== __APP_VERSION__) {
-              window.location.reload()
-            }
-          } catch {
-            /* offline: nessun aggiornamento da segnalare */
+          const v = await versioneInRete()
+          if (v && v !== __APP_VERSION__) {
+            window.location.replace(urlConVersione(v))
           }
           return null
         }),

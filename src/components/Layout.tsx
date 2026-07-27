@@ -6,6 +6,7 @@ import Icona from './Icone'
 import type { NomeIcona } from './Icone'
 import { useSelezione } from '../hooks/useSelezione'
 import { useAggiornamenti } from './GestoreAggiornamenti'
+import AggiornaWebBanner from './AggiornaWebBanner'
 import { TEMI } from '../lib/temi'
 import { GRUPPI_IMMOBILE } from '../lib/menu'
 
@@ -195,6 +196,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* avviso di nuova versione (solo modalità browser) */}
+      <AggiornaWebBanner />
     </div>
   )
 }
