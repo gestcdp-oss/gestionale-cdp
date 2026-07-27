@@ -76,8 +76,9 @@ export default function ArchivioFilePannello() {
             .
           </p>
           <p className="mt-1 text-xs opacity-80">
-            Ogni modifica viene salvata anche lì. Per usare gli stessi dati in un altro browser: apri TR.A.V.I.
-            in quel browser e scegli «Apri archivio esistente» indicando questo file.
+            Ogni modifica viene salvata anche lì, e a ogni apertura o accesso il browser si riallinea dal file:
+            puoi usare Edge e Chrome alternandoli, i dati sono sempre gli stessi. In un browser nuovo basta
+            scegliere questo file una volta con «Apri l'archivio dal file salvato».
             {stato.permesso !== 'granted' && (
               <>
                 {' '}

@@ -62,6 +62,10 @@ async function tutti<T>(store: string): Promise<T[]> {
   })
 }
 
+// true mentre si stanno caricando dati DAL file: in quel momento non bisogna
+// riscrivere il file con ciò che si sta appena leggendo
+let inSincronizzazione = false
+
 async function metti(store: string, valore: unknown): Promise<void> {
   const db = await apriIdb()
   await new Promise<void>((risolvi, rifiuta) => {
@@ -70,7 +74,7 @@ async function metti(store: string, valore: unknown): Promise<void> {
     tx.oncomplete = () => risolvi()
     tx.onerror = () => rifiuta(tx.error)
   })
-  if (store !== 'meta') programmaSpecchio()
+  if (store !== 'meta' && !inSincronizzazione) programmaSpecchio()
 }
 
 async function togli(store: string, chiave: string): Promise<void> {
@@ -81,7 +85,7 @@ async function togli(store: string, chiave: string): Promise<void> {
     tx.oncomplete = () => risolvi()
     tx.onerror = () => rifiuta(tx.error)
   })
-  if (store !== 'meta') programmaSpecchio()
+  if (store !== 'meta' && !inSincronizzazione) programmaSpecchio()
 }
 
 async function svuota(store: string): Promise<void> {
@@ -92,7 +96,7 @@ async function svuota(store: string): Promise<void> {
     tx.oncomplete = () => risolvi()
     tx.onerror = () => rifiuta(tx.error)
   })
-  if (store !== 'meta') programmaSpecchio()
+  if (store !== 'meta' && !inSincronizzazione) programmaSpecchio()
 }
 
 async function prendiMeta(k: string): Promise<{ k: string; [x: string]: unknown } | null> {
@@ -122,24 +126,28 @@ async function leggiHandle(): Promise<HandleFile | null> {
   }
 }
 
-async function generaDump(): Promise<string> {
+async function generaDump(): Promise<{ testo: string; salvatoIl: string }> {
   const [utenti, immobili, preferenze] = await Promise.all([
     tutti<UtenteArchivio>('utenti'),
     tutti<Immobile>('immobili'),
     tutti<{ k: string; v: string }>('preferenze'),
   ])
-  return JSON.stringify(
-    {
-      formato: FORMATO_ARCHIVIO,
-      versione_app: __APP_VERSION__,
-      salvato_il: new Date().toISOString(),
-      utenti,
-      immobili,
-      preferenze,
-    },
-    null,
-    1,
-  )
+  const salvatoIl = new Date().toISOString()
+  return {
+    salvatoIl,
+    testo: JSON.stringify(
+      {
+        formato: FORMATO_ARCHIVIO,
+        versione_app: __APP_VERSION__,
+        salvato_il: salvatoIl,
+        utenti,
+        immobili,
+        preferenze,
+      },
+      null,
+      1,
+    ),
+  }
 }
 
 let attesaSpecchio: number | undefined
@@ -160,13 +168,69 @@ async function specchiaOra(conRichiesta: boolean): Promise<boolean> {
       permesso = (await handle.requestPermission?.({ mode: 'readwrite' })) ?? 'denied'
     }
     if (permesso !== 'granted') return false
+    const { testo, salvatoIl } = await generaDump()
     const w = await handle.createWritable()
-    await w.write(await generaDump())
+    await w.write(testo)
     await w.close()
-    await metti('meta', { k: 'ultimoSalvataggioFile', v: new Date().toISOString() })
+    await metti('meta', { k: 'ultimoSalvataggioFile', v: salvatoIl })
     return true
   } catch {
     return false
+  }
+}
+
+/**
+ * Riallinea questo browser dal file, se il file contiene dati più recenti
+ * (cioè scritti da un altro browser). È ciò che permette di passare da Edge a
+ * Chrome e ritrovare sempre gli stessi dati: il FILE è la fonte di verità.
+ */
+async function sincronizzaDaFile(conRichiesta: boolean): Promise<'importato' | 'invariato' | 'niente'> {
+  try {
+    const handle = await leggiHandle()
+    if (!handle) return 'niente'
+    let permesso: PermessoFile = (await handle.queryPermission?.({ mode: 'readwrite' })) ?? 'prompt'
+    if (permesso === 'prompt' && conRichiesta) {
+      permesso = (await handle.requestPermission?.({ mode: 'readwrite' })) ?? 'denied'
+    }
+    if (permesso !== 'granted') return 'niente'
+
+    const testo = await (await handle.getFile()).text()
+    let dump: {
+      formato?: string
+      salvato_il?: string
+      utenti?: UtenteArchivio[]
+      immobili?: Immobile[]
+      preferenze?: { k: string; v: string }[]
+    }
+    try {
+      dump = JSON.parse(testo)
+    } catch {
+      return 'niente'
+    }
+    if (dump?.formato !== FORMATO_ARCHIVIO || !Array.isArray(dump.utenti)) return 'niente'
+
+    const marcaFile = String(dump.salvato_il || '')
+    const marcaLocale = String((await prendiMeta('ultimoSalvataggioFile'))?.v ?? '')
+    if (!marcaFile || marcaFile <= marcaLocale) return 'invariato'
+
+    inSincronizzazione = true
+    try {
+      await svuota('utenti')
+      await svuota('immobili')
+      await svuota('preferenze')
+      for (const u of dump.utenti) await metti('utenti', u)
+      for (const i of dump.immobili ?? []) await metti('immobili', i)
+      for (const p of dump.preferenze ?? []) await metti('preferenze', p)
+      await metti('meta', { k: 'ultimoSalvataggioFile', v: marcaFile })
+    } finally {
+      inSincronizzazione = false
+    }
+    // se l'utente della sessione non esiste più nell'archivio, la sessione decade
+    const sess = leggiSessione()
+    if (sess && !dump.utenti.some((u) => u.id === sess.id)) scriviSessione(null)
+    return 'importato'
+  } catch {
+    return 'niente'
   }
 }
 
@@ -234,13 +298,22 @@ export async function apriArchivioDaFile(): Promise<{ ok: boolean; messaggio: st
     if (dump.formato !== FORMATO_ARCHIVIO || !Array.isArray(dump.utenti)) {
       throw new Error('Il file non è un archivio TR.A.V.I. valido.')
     }
-    await svuota('utenti')
-    await svuota('immobili')
-    await svuota('preferenze')
-    for (const u of dump.utenti) await metti('utenti', u)
-    for (const i of dump.immobili ?? []) await metti('immobili', i)
-    for (const p of dump.preferenze ?? []) await metti('preferenze', p)
-    await metti('meta', { k: 'fileArchivio', h: handle })
+    inSincronizzazione = true
+    try {
+      await svuota('utenti')
+      await svuota('immobili')
+      await svuota('preferenze')
+      for (const u of dump.utenti) await metti('utenti', u)
+      for (const i of dump.immobili ?? []) await metti('immobili', i)
+      for (const p of dump.preferenze ?? []) await metti('preferenze', p)
+      await metti('meta', { k: 'fileArchivio', h: handle })
+      await metti('meta', {
+        k: 'ultimoSalvataggioFile',
+        v: String((dump as { salvato_il?: string }).salvato_il || new Date().toISOString()),
+      })
+    } finally {
+      inSincronizzazione = false
+    }
     scriviSessione(null) // si rientra con le credenziali contenute nell'archivio
     return {
       ok: true,
@@ -431,6 +504,9 @@ export function creaApiBrowser(): ApiTravi {
     auth: {
       stato: () =>
         rispondi(async () => {
+          // all'avvio, se il permesso sul file è già attivo, ci si riallinea
+          // in silenzio: aprendo un altro browser i dati appaiono aggiornati
+          await sincronizzaDaFile(false)
           const utenti = await tutti<UtenteArchivio>('utenti')
           const attuale = await utenteCorrente()
           return { serveSetup: utenti.length === 0, utente: attuale ? pubblico(attuale) : null }
@@ -462,6 +538,10 @@ export function creaApiBrowser(): ApiTravi {
 
       login: (email: string, password: string) =>
         rispondi(async () => {
+          // il click di accesso è un gesto dell'utente: se serve, il browser
+          // mostra la richiesta di permesso sul file e ci si riallinea PRIMA
+          // di verificare le credenziali (che potrebbero essere cambiate altrove)
+          await sincronizzaDaFile(true)
           const mail = String(email || '').trim().toLowerCase()
           const utenti = await tutti<UtenteArchivio>('utenti')
           const u = utenti.find((x) => x.email.toLowerCase() === mail)
