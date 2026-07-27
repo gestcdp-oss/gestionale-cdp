@@ -4,6 +4,8 @@ import { AuthProvider, useAuth } from './hooks/useAuth'
 import { dbLocale } from './lib/db'
 import PrimoAvvioPage from './pages/PrimoAvvioPage'
 import PrimaSistemazionePage from './pages/PrimaSistemazionePage'
+import ArchivioGatePage from './pages/ArchivioGatePage'
+import { supportaArchivioFile, statoArchivioFile } from './lib/dbBrowser'
 import { PreferenzeProvider } from './hooks/usePreferenze'
 import { SelezioneProvider } from './hooks/useSelezione'
 import { ImmobiliProvider } from './hooks/useImmobili'
@@ -36,12 +38,32 @@ function Contenuto() {
   const [chiediCollegamenti, setChiediCollegamenti] = useState(false)
   // se il programma gira da una cartella qualsiasi, prima si sistema
   const [sistemazione, setSistemazione] = useState<{ serve: boolean; destinazione: string } | null>(null)
+  // versione browser: finché manca un file archivio, prima si chiede dove salvarlo
+  const [gateArchivio, setGateArchivio] = useState<boolean | null>(supportaArchivioFile() ? null : false)
 
   useEffect(() => {
     void dbLocale.sistemazione.stato().then(({ data }) =>
       setSistemazione({ serve: Boolean(data?.serve), destinazione: data?.destinazione ?? '' }),
     )
   }, [])
+
+  useEffect(() => {
+    if (!utente || !supportaArchivioFile()) return
+    let vivo = true
+    void statoArchivioFile().then((s) => {
+      if (!vivo) return
+      let rimandato = false
+      try {
+        rimandato = sessionStorage.getItem('travi_gate_rimandato') === 'si'
+      } catch {
+        /* ignora */
+      }
+      setGateArchivio(s.supportato && !s.collegato && !rimandato)
+    })
+    return () => {
+      vivo = false
+    }
+  }, [utente])
 
   useEffect(() => {
     if (!utente) return
@@ -68,6 +90,12 @@ function Contenuto() {
   if (!utente) return <LoginPage />
 
   if (chiediCollegamenti) return <PrimoAvvioPage onFine={() => setChiediCollegamenti(false)} />
+
+  // versione browser: prima della home serve decidere dove vive l'archivio
+  if (gateArchivio === null) {
+    return <div className="flex min-h-full items-center justify-center text-cielo-500">Caricamento…</div>
+  }
+  if (gateArchivio) return <ArchivioGatePage onFine={() => setGateArchivio(false)} />
 
   return (
     <ImmobiliProvider>

@@ -350,6 +350,135 @@ export async function apriArchivioDaFile(): Promise<{ ok: boolean; messaggio: st
   }
 }
 
+/**
+ * Nuovo archivio: azzera i dati e li salva in un file nuovo. Gli UTENTI vengono
+ * mantenuti e travasati nel nuovo file (altrimenti non si potrebbe più entrare).
+ * Prima dell'azzeramento viene scaricata una copia di sicurezza dei dati.
+ */
+export async function creaNuovoArchivio(): Promise<{ ok: boolean; messaggio: string }> {
+  try {
+    const handle = await window.showSaveFilePicker!({
+      suggestedName: 'TRAVI-archivio.travidb',
+      startIn: 'documents',
+      types: [{ description: 'Archivio TR.A.V.I.', accept: { 'application/json': ['.travidb'] } }],
+    })
+    // copia di sicurezza dei dati attuali (best effort, prima di azzerare)
+    try {
+      const attuali = await tutti<Immobile>('immobili')
+      if (attuali.length > 0) {
+        scaricaFile(
+          `TRAVI-backup-prima-nuovo-archivio-${new Date().toISOString().slice(0, 10)}.travidati`,
+          JSON.stringify(
+            {
+              formato: FORMATO_ESPORTAZIONE,
+              versione_app: __APP_VERSION__,
+              esportato_il: new Date().toISOString(),
+              esportato_da: (await utenteCorrente())?.email ?? '',
+              immobili: attuali.map((i) => ({
+                asset: i.asset,
+                denominazione: i.denominazione,
+                portafoglio: i.portafoglio,
+                localizzazione: i.localizzazione,
+              })),
+            },
+            null,
+            1,
+          ),
+        )
+      }
+    } catch {
+      /* il backup non blocca l'operazione */
+    }
+    inSincronizzazione = true
+    try {
+      await svuota('immobili')
+      await svuota('preferenze')
+      await metti('meta', { k: 'fileArchivio', h: handle })
+    } finally {
+      inSincronizzazione = false
+    }
+    const scritto = await specchiaOra(true)
+    try {
+      window.dispatchEvent(new CustomEvent('travi-archivio-importato'))
+    } catch {
+      /* ignora */
+    }
+    return scritto
+      ? { ok: true, messaggio: `Nuovo archivio creato: ${handle.name}. Utenti mantenuti, dati azzerati.` }
+      : { ok: false, messaggio: 'Archivio azzerato ma scrittura del file non riuscita: usa "Salva ora".' }
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') return { ok: false, messaggio: '' }
+    return { ok: false, messaggio: String((e as Error)?.message ?? e) }
+  }
+}
+
+/** Scarica una copia dell'archivio completo, da inviare a un collega. */
+export async function esportaCopiaArchivio(): Promise<{ ok: boolean; messaggio: string }> {
+  try {
+    const { testo } = await generaDump()
+    const nome = `TRAVI-archivio-copia-${new Date().toISOString().slice(0, 10)}.travidb`
+    scaricaFile(nome, testo)
+    return { ok: true, messaggio: `Copia dell'archivio scaricata: ${nome} (cartella Download).` }
+  } catch (e) {
+    return { ok: false, messaggio: String((e as Error)?.message ?? e) }
+  }
+}
+
+/**
+ * Importa i DATI da un archivio ricevuto (copia di un collega): sostituisce gli
+ * immobili, ma MANTIENE gli utenti e le preferenze di questo computer, così si
+ * continua a entrare con le proprie credenziali. Accetta anche i file .travidati.
+ */
+export async function importaDatiDaArchivio(): Promise<{ ok: boolean; messaggio: string; immobili?: number }> {
+  try {
+    const [handle] = await window.showOpenFilePicker!({
+      types: [
+        {
+          description: 'Archivio o dati TR.A.V.I.',
+          accept: { 'application/json': ['.travidb', '.travidati', '.json'] },
+        },
+      ],
+    })
+    if (!handle) return { ok: false, messaggio: '' }
+    let dump: { formato?: string; immobili?: ImmobileInput[] }
+    try {
+      dump = JSON.parse(await (await handle.getFile()).text())
+    } catch {
+      throw new Error('Il file non è un archivio TR.A.V.I. valido.')
+    }
+    const formatoValido = dump?.formato === FORMATO_ARCHIVIO || dump?.formato === FORMATO_ESPORTAZIONE
+    if (!formatoValido || !Array.isArray(dump.immobili)) {
+      throw new Error('Il file non è un archivio TR.A.V.I. valido.')
+    }
+    // niente guardia: le scritture devono finire anche nel file collegato
+    await svuota('immobili')
+    let importati = 0
+    for (const r of dump.immobili) {
+      const asset = pulisci(r.asset)
+      const den = pulisci(r.denominazione)
+      if (!asset || !den) continue
+      await metti('immobili', {
+        id: crypto.randomUUID(),
+        asset,
+        denominazione: den,
+        portafoglio: pulisci(r.portafoglio),
+        localizzazione: pulisci(r.localizzazione),
+        creato_il: new Date().toISOString(),
+      } satisfies Immobile)
+      importati++
+    }
+    try {
+      window.dispatchEvent(new CustomEvent('travi-archivio-importato'))
+    } catch {
+      /* ignora */
+    }
+    return { ok: true, messaggio: `Importati ${importati} immobili. I tuoi utenti restano invariati.`, immobili: importati }
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') return { ok: false, messaggio: '' }
+    return { ok: false, messaggio: String((e as Error)?.message ?? e) }
+  }
+}
+
 export async function salvaArchivioOra(): Promise<{ ok: boolean; messaggio: string }> {
   const scritto = await specchiaOra(true)
   return scritto
