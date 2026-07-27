@@ -34,6 +34,11 @@ export function ImmobiliProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void ricarica()
+    // versione browser: quando l'archivio viene riallineato dal file (perché un
+    // altro browser ha scritto dati più recenti), l'elenco si aggiorna da solo
+    const aggiorna = () => void ricarica()
+    window.addEventListener('travi-archivio-importato', aggiorna)
+    return () => window.removeEventListener('travi-archivio-importato', aggiorna)
   }, [ricarica])
 
   async function inserisci(r: ImmobileInput): Promise<Esito> {

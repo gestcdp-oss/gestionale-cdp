@@ -228,10 +228,33 @@ async function sincronizzaDaFile(conRichiesta: boolean): Promise<'importato' | '
     // se l'utente della sessione non esiste più nell'archivio, la sessione decade
     const sess = leggiSessione()
     if (sess && !dump.utenti.some((u) => u.id === sess.id)) scriviSessione(null)
+    // avvisa l'interfaccia: i dati mostrati vanno ricaricati
+    try {
+      window.dispatchEvent(new CustomEvent('travi-archivio-importato'))
+    } catch {
+      /* ignora */
+    }
     return 'importato'
   } catch {
     return 'niente'
   }
+}
+
+// Riallineamento anche quando si TORNA sulla finestra (cambio scheda/app):
+// così, alternando i browser, i dati si aggiornano senza dover riaccedere.
+let ultimoControlloFile = 0
+
+function agganciaRiallineamento(): void {
+  const controlla = () => {
+    const adesso = Date.now()
+    if (adesso - ultimoControlloFile < 5000) return // non più di una volta ogni 5s
+    ultimoControlloFile = adesso
+    void sincronizzaDaFile(false)
+  }
+  window.addEventListener('focus', controlla)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') controlla()
+  })
 }
 
 export type StatoArchivioFile = {
@@ -498,6 +521,11 @@ export function creaApiBrowser(): ApiTravi {
     void navigator.storage?.persist?.()
   } catch {
     /* non disponibile: pazienza */
+  }
+  try {
+    agganciaRiallineamento()
+  } catch {
+    /* ignora */
   }
 
   return {
