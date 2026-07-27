@@ -1,0 +1,14 @@
+{
+  "name": "TR.A.V.I. - Tracciamento Attività e Verifica Immobili",
+  "short_name": "TR.A.V.I.",
+  "description": "Gestionale immobili: i dati restano sul computer.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#E6F0F8",
+  "theme_color": "#E6F0F8",
+  "lang": "it",
+  "icons": [
+    { "src": "icona-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icona-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

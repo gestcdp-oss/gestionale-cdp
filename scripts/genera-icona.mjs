@@ -17,3 +17,10 @@ mkdirSync('build', { recursive: true })
 const ico = await pngToIco(pngs)
 writeFileSync('build/icon.ico', ico)
 console.log(`build/icon.ico generato da ${sorgente} (${misure.join(', ')} px — ${ico.length} byte)`)
+
+// icone PNG per la versione browser (manifest dell'app installabile)
+for (const m of [192, 512]) {
+  const png = new Resvg(svg, { fitTo: { mode: 'width', value: m } }).render().asPng()
+  writeFileSync(`public/icona-${m}.png`, png)
+}
+console.log('public/icona-192.png e public/icona-512.png generate')

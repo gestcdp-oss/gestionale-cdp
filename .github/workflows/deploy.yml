@@ -1,0 +1,42 @@
+name: Pubblica la versione browser
+
+# Pubblica su GitHub Pages la versione che gira nel browser.
+# NB: la pagina è solo il "programma": i dati degli utenti restano nella
+# memoria locale del browser di ciascun computer, non passano da qui.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # niente postinstall di electron-builder: qui serve solo il build web
+      - run: npm ci --ignore-scripts
+
+      - run: npx vite build
+
+      - name: Fallback SPA
+        run: cp dist/index.html dist/404.html
+
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          force_orphan: true
