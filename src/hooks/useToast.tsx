@@ -56,7 +56,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={{ ok, errore, avviso, esito }}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2">
+      {/* al centro dello schermo: l'esito non può passare inosservato */}
+      <div className="pointer-events-none fixed inset-0 z-[60] flex flex-col items-center justify-center gap-2 p-4">
         {elenco.map((t) => (
           <Riquadro key={t.id} toast={t} onChiudi={() => chiudi(t.id)} />
         ))}
@@ -78,7 +79,7 @@ function Riquadro({ toast, onChiudi }: { toast: Toast; onChiudi: () => void }) {
     <div
       role="status"
       onClick={onChiudi}
-      className={`toast-entra pointer-events-auto flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-sm shadow-lg ${stile}`}
+      className={`toast-entra pointer-events-auto flex w-[min(28rem,calc(100vw-2rem))] cursor-pointer items-start gap-3 rounded-xl border-2 p-4 text-sm shadow-2xl ${stile}`}
     >
       <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/70 text-xs font-bold">
         {segno}
