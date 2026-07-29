@@ -57,16 +57,8 @@ export type DatiBM = Omit<IncaricoBM, 'id' | 'immobile_id' | 'anno' | 'aggiornat
 
 export const MESI_BREVI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic']
 
-/** Stati dell'autorizzazione alla fatturazione di un bimestre. */
-export const STATI_AUTORIZZAZIONE = [
-  'da autorizzare',
-  'autorizzare',
-  'autorizzata',
-  'in corso',
-  'da fatturare',
-  'fatturata',
-  'pagata',
-]
+/** Stati dell'autorizzazione alla fatturazione: vuoto significa "non ancora". */
+export const STATI_AUTORIZZAZIONE = ['ok', 'inviare']
 
 export const BIMESTRI = [
   { n: 1, mesi: 'gen-feb' },

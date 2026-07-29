@@ -311,12 +311,9 @@ export default function BuildingManagerPage() {
                         </select>
                       </td>
                       <td className="px-2 py-2">
-                        <input
-                          list="stati-autorizzazione"
-                          value={campi.bimestri[i].autorizzazione ?? ''}
-                          onChange={(e) => modificaBimestre(i, { autorizzazione: e.target.value || null })}
-                          placeholder="stato o importo"
-                          className={inputCella}
+                        <SceltaAutorizzazione
+                          valore={campi.bimestri[i].autorizzazione}
+                          onCambia={(v) => modificaBimestre(i, { autorizzazione: v })}
                         />
                       </td>
                     </tr>
@@ -340,12 +337,18 @@ export default function BuildingManagerPage() {
                 onCambia={(v) => modifica({ svincolo_id: v })}
                 mono
               />
-              <Campo
-                etichetta="Autorizz. svincolo"
-                valore={campi.svincolo_aut}
-                onCambia={(v) => modifica({ svincolo_aut: v })}
-                suggerimenti="stati-autorizzazione"
-              />
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-cielo-500">
+                  Autorizz. svincolo
+                </span>
+                <span className="mt-1 block">
+                  <SceltaAutorizzazione
+                    valore={campi.svincolo_aut}
+                    onCambia={(v) => modifica({ svincolo_aut: v })}
+                    grande
+                  />
+                </span>
+              </label>
             </div>
             <label className="mt-4 block">
               <span className="text-xs font-semibold uppercase tracking-wide text-cielo-500">Note</span>
@@ -367,12 +370,7 @@ export default function BuildingManagerPage() {
         </>
       )}
 
-      {/* suggerimenti: nascono dai dati già inseriti, non da elenchi fissi */}
-      <datalist id="stati-autorizzazione">
-        {STATI_AUTORIZZAZIONE.map((s) => (
-          <option key={s} value={s} />
-        ))}
-      </datalist>
+      {/* i fornitori nascono dai dati già inseriti, non da un elenco fisso */}
       <ElencoFornitori />
     </div>
   )
@@ -443,6 +441,49 @@ function ElencoFornitori() {
         <option key={n} value={n} />
       ))}
     </datalist>
+  )
+}
+
+/**
+ * Autorizzazione alla fatturazione: vuota, "ok" oppure "inviare". Se in
+ * archivio c'è un valore diverso (arrivato da una vecchia importazione) resta
+ * disponibile nell'elenco, così non si perde.
+ */
+function SceltaAutorizzazione({
+  valore,
+  onCambia,
+  grande,
+}: {
+  valore: string | null
+  onCambia: (v: string | null) => void
+  grande?: boolean
+}) {
+  const attuale = valore ?? ''
+  const opzioni = STATI_AUTORIZZAZIONE.includes(attuale) || attuale === ''
+    ? STATI_AUTORIZZAZIONE
+    : [...STATI_AUTORIZZAZIONE, attuale]
+  const colore =
+    attuale === 'ok'
+      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+      : attuale === 'inviare'
+        ? 'border-amber-300 bg-amber-50 text-amber-800'
+        : 'border-cielo-300 bg-white text-cielo-800'
+
+  return (
+    <select
+      value={attuale}
+      onChange={(e) => onCambia(e.target.value || null)}
+      className={`w-full rounded border px-2 outline-none transition focus:border-cielo-400 focus:ring-1 focus:ring-cielo-200 ${colore} ${
+        grande ? 'rounded-lg py-1.5 text-sm' : 'py-1 text-sm'
+      }`}
+    >
+      <option value="">—</option>
+      {opzioni.map((s) => (
+        <option key={s} value={s}>
+          {s}
+        </option>
+      ))}
+    </select>
   )
 }
 
