@@ -112,6 +112,30 @@ function apriDb(nomeFile = 'travi.db') {
     );
 
     create table if not exists app_meta (k text primary key, v text);
+
+    -- Building Management: un incarico per immobile e per anno
+    create table if not exists bm (
+      id            text primary key,
+      immobile_id   text not null,
+      anno          integer not null,
+      fornitore     text,
+      nominativo    text,
+      recapito      text,
+      categoria     text,
+      periodo_dal   text,
+      periodo_al    text,
+      fabbisogno    real,
+      call_off      text,
+      report_json   text,
+      bimestri_json text,
+      sds1          text,
+      sds2          text,
+      svincolo_id   text,
+      svincolo_aut  text,
+      note          text,
+      aggiornato_il text not null default (datetime('now'))
+    );
+    create unique index if not exists bm_immobile_anno_uidx on bm (immobile_id, anno);
   `)
   seminaSeServe()
 }
@@ -456,8 +480,149 @@ ipcMain.handle('immobili:update', (_ev, { id, campi }) =>
 ipcMain.handle('immobili:delete', (_ev, id) =>
   rispondi(() => {
     richiediSessione()
-    // In futuro: qui si cancelleranno anche tutte le attività collegate all'asset.
+    // con l'immobile se ne vanno anche le attività collegate
+    db.prepare('delete from bm where immobile_id = ?').run(id)
     db.prepare('delete from immobili where id = ?').run(id)
+    return null
+  }),
+)
+
+// ---------- IPC: Building Management ----------
+// Un incarico per immobile e per anno. Report mensili e bimestri di
+// fatturazione stanno in due campi JSON: sono elenchi di lunghezza fissa.
+
+function bmDaRiga(r) {
+  if (!r) return null
+  const leggi = (testo, fallback) => {
+    try {
+      const v = JSON.parse(testo)
+      return Array.isArray(v) ? v : fallback
+    } catch {
+      return fallback
+    }
+  }
+  const report = leggi(r.report_json, [])
+  const bimestri = leggi(r.bimestri_json, [])
+  return {
+    id: r.id,
+    immobile_id: r.immobile_id,
+    anno: Number(r.anno),
+    fornitore: r.fornitore,
+    nominativo: r.nominativo,
+    recapito: r.recapito,
+    categoria: r.categoria,
+    periodo_dal: r.periodo_dal,
+    periodo_al: r.periodo_al,
+    fabbisogno: r.fabbisogno === null || r.fabbisogno === undefined ? null : Number(r.fabbisogno),
+    call_off: r.call_off,
+    report: Array.from({ length: 12 }, (_, i) => Boolean(report[i])),
+    bimestri: Array.from({ length: 6 }, (_, i) => ({
+      idBem: bimestri[i]?.idBem ?? null,
+      importo: bimestri[i]?.importo ?? null,
+      allegati: bimestri[i]?.allegati ?? null,
+      autorizzazione: bimestri[i]?.autorizzazione ?? null,
+    })),
+    sds1: r.sds1,
+    sds2: r.sds2,
+    svincolo_id: r.svincolo_id,
+    svincolo_aut: r.svincolo_aut,
+    note: r.note,
+    aggiornato_il: r.aggiornato_il,
+  }
+}
+
+function numeroOppureNulla(v) {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(String(v).replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+ipcMain.handle('bm:get', (_ev, { immobileId, anno }) =>
+  rispondi(() => {
+    richiediSessione()
+    return bmDaRiga(db.prepare('select * from bm where immobile_id = ? and anno = ?').get(immobileId, Number(anno)))
+  }),
+)
+
+ipcMain.handle('bm:salva', (_ev, { immobileId, anno, campi }) =>
+  rispondi(() => {
+    richiediSessione()
+    if (!immobileId) throw new Error('Immobile non indicato.')
+    const a = Number(anno)
+    if (!Number.isFinite(a)) throw new Error('Anno non valido.')
+    const c = campi || {}
+    const report = Array.from({ length: 12 }, (_, i) => Boolean((c.report || [])[i]))
+    const bimestri = Array.from({ length: 6 }, (_, i) => {
+      const b = (c.bimestri || [])[i] || {}
+      return {
+        idBem: pulisci(b.idBem),
+        importo: numeroOppureNulla(b.importo),
+        allegati: pulisci(b.allegati),
+        autorizzazione: pulisci(b.autorizzazione),
+      }
+    })
+    const esistente = db.prepare('select id from bm where immobile_id = ? and anno = ?').get(immobileId, a)
+    const valori = [
+      pulisci(c.fornitore),
+      pulisci(c.nominativo),
+      pulisci(c.recapito),
+      pulisci(c.categoria),
+      pulisci(c.periodo_dal),
+      pulisci(c.periodo_al),
+      numeroOppureNulla(c.fabbisogno),
+      pulisci(c.call_off),
+      JSON.stringify(report),
+      JSON.stringify(bimestri),
+      pulisci(c.sds1),
+      pulisci(c.sds2),
+      pulisci(c.svincolo_id),
+      pulisci(c.svincolo_aut),
+      pulisci(c.note),
+    ]
+    if (esistente) {
+      db.prepare(
+        `update bm set fornitore = ?, nominativo = ?, recapito = ?, categoria = ?, periodo_dal = ?,
+                       periodo_al = ?, fabbisogno = ?, call_off = ?, report_json = ?, bimestri_json = ?,
+                       sds1 = ?, sds2 = ?, svincolo_id = ?, svincolo_aut = ?, note = ?,
+                       aggiornato_il = datetime('now')
+         where id = ?`,
+      ).run(...valori, esistente.id)
+    } else {
+      db.prepare(
+        `insert into bm (id, immobile_id, anno, fornitore, nominativo, recapito, categoria, periodo_dal,
+                         periodo_al, fabbisogno, call_off, report_json, bimestri_json, sds1, sds2,
+                         svincolo_id, svincolo_aut, note)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(crypto.randomUUID(), immobileId, a, ...valori)
+    }
+    return null
+  }),
+)
+
+ipcMain.handle('bm:anni', (_ev, immobileId) =>
+  rispondi(() => {
+    richiediSessione()
+    return db
+      .prepare('select anno from bm where immobile_id = ? order by anno desc')
+      .all(immobileId)
+      .map((r) => Number(r.anno))
+  }),
+)
+
+ipcMain.handle('bm:fornitori', () =>
+  rispondi(() => {
+    richiediSessione()
+    return db
+      .prepare("select distinct trim(fornitore) as f from bm where trim(coalesce(fornitore, '')) <> '' order by f")
+      .all()
+      .map((r) => r.f)
+  }),
+)
+
+ipcMain.handle('bm:rimuovi', (_ev, { immobileId, anno }) =>
+  rispondi(() => {
+    richiediSessione()
+    db.prepare('delete from bm where immobile_id = ? and anno = ?').run(immobileId, Number(anno))
     return null
   }),
 )

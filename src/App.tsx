@@ -16,6 +16,7 @@ import LoginPage from './pages/LoginPage'
 import HomePage from './pages/HomePage'
 import ImmobiliPage from './pages/ImmobiliPage'
 import SchedaImmobilePage from './pages/SchedaImmobilePage'
+import BuildingManagerPage from './pages/BuildingManagerPage'
 import UtentiPage from './pages/UtentiPage'
 
 export default function App() {
@@ -102,6 +103,7 @@ function Contenuto() {
               <Route path="/" element={<HomePage />} />
               <Route path="/immobili" element={<ImmobiliPage />} />
               <Route path="/immobile" element={<SchedaImmobilePage />} />
+              <Route path="/bm" element={<BuildingManagerPage />} />
               <Route path="/utenti" element={<UtentiPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

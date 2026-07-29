@@ -26,6 +26,13 @@ contextBridge.exposeInMainWorld('travi', {
     update: (id, campi) => ipcRenderer.invoke('immobili:update', { id, campi }),
     remove: (id) => ipcRenderer.invoke('immobili:delete', id),
   },
+  bm: {
+    get: (immobileId, anno) => ipcRenderer.invoke('bm:get', { immobileId, anno }),
+    salva: (immobileId, anno, campi) => ipcRenderer.invoke('bm:salva', { immobileId, anno, campi }),
+    anni: (immobileId) => ipcRenderer.invoke('bm:anni', immobileId),
+    fornitori: () => ipcRenderer.invoke('bm:fornitori'),
+    rimuovi: (immobileId, anno) => ipcRenderer.invoke('bm:rimuovi', { immobileId, anno }),
+  },
   mappa: {
     apri: (query, modo) => ipcRenderer.invoke('mappa:apri', { query, modo }),
     anteprima: (query, tipo) => ipcRenderer.invoke('mappa:anteprima', { query, tipo }),

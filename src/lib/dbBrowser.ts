@@ -11,7 +11,8 @@ import type {
   AnteprimaImport,
   StatoAggiornamento,
 } from './db'
-import type { Immobile } from './tipi'
+import type { Immobile, IncaricoBM, DatiBM } from './tipi'
+import { BIMESTRI, bimestreVuoto, datiBMVuoti } from './tipi'
 
 const ADMIN_PERMANENTE = 'marabelli.s@gmail.com'
 const FORMATO_ESPORTAZIONE = 'travi-dati-1'
@@ -57,13 +58,15 @@ const NOME_DB = 'travi'
 
 function apriIdb(): Promise<IDBDatabase> {
   return new Promise((risolvi, rifiuta) => {
-    const ric = indexedDB.open(NOME_DB, 1)
+    // versione 2: si aggiunge l'archivio degli incarichi di Building Management
+    const ric = indexedDB.open(NOME_DB, 2)
     ric.onupgradeneeded = () => {
       const db = ric.result
       if (!db.objectStoreNames.contains('utenti')) db.createObjectStore('utenti', { keyPath: 'id' })
       if (!db.objectStoreNames.contains('immobili')) db.createObjectStore('immobili', { keyPath: 'id' })
       if (!db.objectStoreNames.contains('preferenze')) db.createObjectStore('preferenze', { keyPath: 'k' })
       if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'k' })
+      if (!db.objectStoreNames.contains('bm')) db.createObjectStore('bm', { keyPath: 'id' })
     }
     ric.onsuccess = () => risolvi(ric.result)
     ric.onerror = () => rifiuta(ric.error ?? new Error('Archivio locale non disponibile.'))
@@ -176,10 +179,11 @@ function marcaTemporale(): string {
 }
 
 async function generaDump(): Promise<{ testo: string; salvatoIl: string }> {
-  const [utenti, immobili, preferenze] = await Promise.all([
+  const [utenti, immobili, preferenze, bm] = await Promise.all([
     tutti<UtenteArchivio>('utenti'),
     tutti<Immobile>('immobili'),
     tutti<{ k: string; v: string }>('preferenze'),
+    tutti<IncaricoBM>('bm'),
   ])
   const salvatoIl = new Date().toISOString()
   return {
@@ -192,6 +196,7 @@ async function generaDump(): Promise<{ testo: string; salvatoIl: string }> {
         utenti,
         immobili,
         preferenze,
+        bm,
       },
       null,
       1,
@@ -242,6 +247,7 @@ async function sincronizzaDaFile(conRichiesta: boolean): Promise<'importato' | '
       utenti?: UtenteArchivio[]
       immobili?: Immobile[]
       preferenze?: { k: string; v: string }[]
+      bm?: IncaricoBM[]
     }
     try {
       dump = JSON.parse(testo)
@@ -259,9 +265,11 @@ async function sincronizzaDaFile(conRichiesta: boolean): Promise<'importato' | '
       await svuota('utenti')
       await svuota('immobili')
       await svuota('preferenze')
+      await svuota('bm')
       for (const u of dump.utenti) await metti('utenti', u)
       for (const i of dump.immobili ?? []) await metti('immobili', i)
       for (const p of dump.preferenze ?? []) await metti('preferenze', p)
+      for (const b of dump.bm ?? []) await metti('bm', b)
       await metti('meta', { k: 'ultimoSalvataggioFile', v: marcaFile })
     } finally {
       inSincronizzazione = false
@@ -480,6 +488,7 @@ export async function ripristinaDaBackup(nome: string): Promise<{ ok: boolean; m
       utenti?: UtenteArchivio[]
       immobili?: Immobile[]
       preferenze?: { k: string; v: string }[]
+      bm?: IncaricoBM[]
     }
     if (dump.formato !== FORMATO_ARCHIVIO || !Array.isArray(dump.utenti)) {
       return { ok: false, messaggio: 'Questa copia non è leggibile.' }
@@ -492,9 +501,11 @@ export async function ripristinaDaBackup(nome: string): Promise<{ ok: boolean; m
       await svuota('utenti')
       await svuota('immobili')
       await svuota('preferenze')
+      await svuota('bm')
       for (const u of dump.utenti) await metti('utenti', u)
       for (const i of dump.immobili ?? []) await metti('immobili', i)
       for (const p of dump.preferenze ?? []) await metti('preferenze', p)
+      for (const b of dump.bm ?? []) await metti('bm', b)
     } finally {
       inSincronizzazione = false
     }
@@ -592,16 +603,21 @@ export async function scegliPosizioneArchivio(): Promise<{ ok: boolean; messaggi
  * intatti utenti e preferenze. Usata sia dall'importazione esplicita sia
  * dall'apertura di un file, così l'utente non deve indovinare il pulsante.
  */
-async function sostituisciImmobili(righe: ImmobileInput[]): Promise<number> {
+async function sostituisciImmobili(righe: ImmobileInput[], bm?: BMEsportato[]): Promise<number> {
   // niente guardia: le scritture devono finire anche nel file collegato
   await svuota('immobili')
+  // gli identificativi cambiano a ogni importazione: gli incarichi si
+  // riagganciano tramite il numero asset, che invece è stabile
+  const idPerAsset = new Map<string, string>()
   let importati = 0
   for (const r of righe) {
     const asset = pulisci(r.asset)
     const den = pulisci(r.denominazione)
     if (!asset || !den) continue
+    const id = crypto.randomUUID()
+    idPerAsset.set(asset.toLowerCase(), id)
     await metti('immobili', {
-      id: crypto.randomUUID(),
+      id,
       asset,
       denominazione: den,
       portafoglio: pulisci(r.portafoglio),
@@ -609,6 +625,21 @@ async function sostituisciImmobili(righe: ImmobileInput[]): Promise<number> {
       creato_il: new Date().toISOString(),
     } satisfies Immobile)
     importati++
+  }
+  if (Array.isArray(bm)) {
+    await svuota('bm')
+    for (const b of bm) {
+      const immobileId = idPerAsset.get(String(b.asset ?? '').trim().toLowerCase())
+      const anno = Number(b.anno)
+      if (!immobileId || !Number.isFinite(anno)) continue
+      await metti('bm', {
+        ...normalizzaBM(b),
+        id: crypto.randomUUID(),
+        immobile_id: immobileId,
+        anno,
+        aggiornato_il: new Date().toISOString(),
+      } satisfies IncaricoBM)
+    }
   }
   try {
     window.dispatchEvent(new CustomEvent('travi-archivio-importato'))
@@ -646,6 +677,9 @@ export async function apriArchivioDaFile(): Promise<{
       utenti?: UtenteArchivio[]
       immobili?: Immobile[]
       preferenze?: { k: string; v: string }[]
+      // negli archivi completi gli incarichi hanno l'id dell'immobile,
+      // nei file di soli dati hanno il numero asset
+      bm?: unknown[]
     }
     try {
       dump = JSON.parse(testo)
@@ -655,7 +689,10 @@ export async function apriArchivioDaFile(): Promise<{
     // file di soli dati: non è un archivio (non contiene utenti), ma i suoi
     // immobili si possono caricare lo stesso senza toccare gli account
     if (dump.formato === FORMATO_ESPORTAZIONE && Array.isArray(dump.immobili)) {
-      const importati = await sostituisciImmobili(dump.immobili as ImmobileInput[])
+      const importati = await sostituisciImmobili(
+        dump.immobili as ImmobileInput[],
+        dump.bm as BMEsportato[] | undefined,
+      )
       return {
         ok: true,
         soloDati: true,
@@ -671,9 +708,11 @@ export async function apriArchivioDaFile(): Promise<{
       await svuota('utenti')
       await svuota('immobili')
       await svuota('preferenze')
+      await svuota('bm')
       for (const u of dump.utenti) await metti('utenti', u)
       for (const i of dump.immobili ?? []) await metti('immobili', i)
       for (const p of dump.preferenze ?? []) await metti('preferenze', p)
+      for (const b of (dump.bm ?? []) as IncaricoBM[]) await metti('bm', b)
       await metti('meta', { k: 'fileArchivio', h: handle })
       await metti('meta', {
         k: 'ultimoSalvataggioFile',
@@ -727,6 +766,7 @@ export async function creaNuovoArchivio(): Promise<{ ok: boolean; messaggio: str
     try {
       await svuota('immobili')
       await svuota('preferenze')
+      await svuota('bm')
       await metti('meta', { k: 'fileArchivio', h: file })
     } finally {
       inSincronizzazione = false
@@ -777,7 +817,7 @@ export async function importaDatiDaArchivio(): Promise<{ ok: boolean; messaggio:
       ],
     })
     if (!handle) return { ok: false, messaggio: '' }
-    let dump: { formato?: string; immobili?: ImmobileInput[] }
+    let dump: { formato?: string; immobili?: ImmobileInput[]; bm?: unknown[] }
     try {
       dump = JSON.parse(await (await handle.getFile()).text())
     } catch {
@@ -787,7 +827,9 @@ export async function importaDatiDaArchivio(): Promise<{ ok: boolean; messaggio:
     if (!formatoValido || !Array.isArray(dump.immobili)) {
       throw new Error('Il file non è un archivio TR.A.V.I. valido.')
     }
-    const importati = await sostituisciImmobili(dump.immobili)
+    // solo dai file di soli dati gli incarichi arrivano agganciati all'asset
+    const incarichi = dump.formato === FORMATO_ESPORTAZIONE ? (dump.bm as BMEsportato[] | undefined) : undefined
+    const importati = await sostituisciImmobili(dump.immobili, incarichi)
     return { ok: true, messaggio: `Importati ${importati} immobili. I tuoi utenti restano invariati.`, immobili: importati }
   } catch (e) {
     if ((e as Error)?.name === 'AbortError') return { ok: false, messaggio: '' }
@@ -950,6 +992,61 @@ function scaricaFile(nome: string, contenuto: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 5000)
 }
 
+// -------------------------------------------------- Building Management (dati)
+
+/** Incarico come viaggia nei file di soli dati: agganciato all'asset, non all'id. */
+type BMEsportato = Partial<DatiBM> & { asset?: string; anno?: number }
+
+/** Incarichi pronti per un file di soli dati: al posto dell'id c'è l'asset. */
+async function bmPerEsportazione(): Promise<BMEsportato[]> {
+  const [incarichi, immobili] = await Promise.all([tutti<IncaricoBM>('bm'), tutti<Immobile>('immobili')])
+  const assetPerId = new Map(immobili.map((i) => [i.id, i.asset]))
+  return incarichi
+    .filter((r) => assetPerId.has(r.immobile_id))
+    .map(({ id: _id, immobile_id, aggiornato_il: _agg, ...resto }) => ({
+      ...resto,
+      asset: assetPerId.get(immobile_id) as string,
+    }))
+}
+
+/** Mette in forma i campi dell'incarico: dodici mesi, sei bimestri, niente sorprese. */
+function normalizzaBM(campi: Partial<DatiBM>): DatiBM {
+  const base = datiBMVuoti()
+  const report = Array.isArray(campi.report) ? campi.report : base.report
+  const bimestri = Array.isArray(campi.bimestri) ? campi.bimestri : base.bimestri
+  return {
+    fornitore: pulisci(campi.fornitore),
+    nominativo: pulisci(campi.nominativo),
+    recapito: pulisci(campi.recapito),
+    categoria: pulisci(campi.categoria),
+    periodo_dal: pulisci(campi.periodo_dal),
+    periodo_al: pulisci(campi.periodo_al),
+    fabbisogno: numeroOppureNulla(campi.fabbisogno),
+    call_off: pulisci(campi.call_off),
+    report: Array.from({ length: 12 }, (_, i) => Boolean(report[i])),
+    bimestri: BIMESTRI.map((_, i) => {
+      const b = bimestri[i] ?? bimestreVuoto()
+      return {
+        idBem: pulisci(b?.idBem),
+        importo: numeroOppureNulla(b?.importo),
+        allegati: pulisci(b?.allegati),
+        autorizzazione: pulisci(b?.autorizzazione),
+      }
+    }),
+    sds1: pulisci(campi.sds1),
+    sds2: pulisci(campi.sds2),
+    svincolo_id: pulisci(campi.svincolo_id),
+    svincolo_aut: pulisci(campi.svincolo_aut),
+    note: pulisci(campi.note),
+  }
+}
+
+function numeroOppureNulla(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(String(v).replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
 function sonoCoordinate(q: string): boolean {
   return /^-?\d{1,3}([.,]\d+)?\s*[,;]\s*-?\d{1,3}([.,]\d+)?$/.test(String(q).trim())
 }
@@ -969,7 +1066,7 @@ function urlMappaIncorporata(q: string, tipo: 'mappa' | 'streetview'): string {
 }
 
 // pacchetto in attesa di conferma per l'importazione
-let importInAttesa: { immobili: ImmobileInput[]; nome: string } | null = null
+let importInAttesa: { immobili: ImmobileInput[]; bm?: BMEsportato[]; nome: string } | null = null
 
 // ---------------------------------------------------------------- interfaccia
 
@@ -1275,6 +1372,7 @@ export function creaApiBrowser(): ApiTravi {
                 esportato_il: new Date().toISOString(),
                 esportato_da: s.email,
                 immobili,
+                bm: await bmPerEsportazione(),
               },
               null,
               1,
@@ -1300,6 +1398,7 @@ export function creaApiBrowser(): ApiTravi {
             esportato_da?: string
             esportato_il?: string
             immobili?: ImmobileInput[]
+            bm?: BMEsportato[]
           }
           try {
             pacchetto = JSON.parse(await file.text())
@@ -1309,7 +1408,7 @@ export function creaApiBrowser(): ApiTravi {
           if (!pacchetto || pacchetto.formato !== FORMATO_ESPORTAZIONE || !Array.isArray(pacchetto.immobili)) {
             throw new Error("Il file non è un'esportazione TR.A.V.I. valida.")
           }
-          importInAttesa = { immobili: pacchetto.immobili, nome: file.name }
+          importInAttesa = { immobili: pacchetto.immobili, bm: pacchetto.bm, nome: file.name }
           const attuali = await tutti<Immobile>('immobili')
           return {
             percorso: file.name,
@@ -1351,24 +1450,60 @@ export function creaApiBrowser(): ApiTravi {
           } catch {
             /* il backup è una cortesia: non blocca l'importazione */
           }
-          await svuota('immobili')
-          let importati = 0
-          for (const r of importInAttesa.immobili) {
-            const asset = pulisci(r.asset)
-            const den = pulisci(r.denominazione)
-            if (!asset || !den) continue
-            await metti('immobili', {
-              id: crypto.randomUUID(),
-              asset,
-              denominazione: den,
-              portafoglio: pulisci(r.portafoglio),
-              localizzazione: pulisci(r.localizzazione),
-              creato_il: new Date().toISOString(),
-            } satisfies Immobile)
-            importati++
-          }
+          const importati = await sostituisciImmobili(importInAttesa.immobili, importInAttesa.bm)
           importInAttesa = null
           return { copiaSicurezza: `Download → ${nomeBackup}`, immobili: importati }
+        }),
+    },
+
+    bm: {
+      get: (immobileId: string, anno: number) =>
+        rispondi(async () => {
+          await richiediSessione()
+          const righe = await tutti<IncaricoBM>('bm')
+          return righe.find((r) => r.immobile_id === immobileId && Number(r.anno) === Number(anno)) ?? null
+        }),
+      salva: (immobileId: string, anno: number, campi: DatiBM) =>
+        rispondi(async () => {
+          await richiediSessione()
+          if (!immobileId) throw new Error('Immobile non indicato.')
+          const a = Number(anno)
+          if (!Number.isFinite(a)) throw new Error('Anno non valido.')
+          const righe = await tutti<IncaricoBM>('bm')
+          const esistente = righe.find((r) => r.immobile_id === immobileId && Number(r.anno) === a)
+          await metti('bm', {
+            ...normalizzaBM(campi),
+            id: esistente?.id ?? crypto.randomUUID(),
+            immobile_id: immobileId,
+            anno: a,
+            aggiornato_il: new Date().toISOString(),
+          } satisfies IncaricoBM)
+          return null
+        }),
+      anni: (immobileId: string) =>
+        rispondi(async () => {
+          await richiediSessione()
+          const righe = await tutti<IncaricoBM>('bm')
+          return righe
+            .filter((r) => r.immobile_id === immobileId)
+            .map((r) => Number(r.anno))
+            .filter((n) => Number.isFinite(n))
+            .sort((a, b) => b - a)
+        }),
+      fornitori: () =>
+        rispondi(async () => {
+          await richiediSessione()
+          const righe = await tutti<IncaricoBM>('bm')
+          const nomi = new Set(righe.map((r) => (r.fornitore ?? '').trim()).filter(Boolean))
+          return [...nomi].sort((a, b) => a.localeCompare(b, 'it'))
+        }),
+      rimuovi: (immobileId: string, anno: number) =>
+        rispondi(async () => {
+          await richiediSessione()
+          const righe = await tutti<IncaricoBM>('bm')
+          const esistente = righe.find((r) => r.immobile_id === immobileId && Number(r.anno) === Number(anno))
+          if (esistente) await togli('bm', esistente.id)
+          return null
         }),
     },
 

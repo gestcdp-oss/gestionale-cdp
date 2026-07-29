@@ -1,5 +1,5 @@
 import { creaApiBrowser } from './dbBrowser'
-import type { Immobile } from './tipi'
+import type { Immobile, IncaricoBM, DatiBM } from './tipi'
 
 export type RispostaDb<T> = { data: T | null; error: { code?: string; message: string } | null }
 
@@ -56,6 +56,16 @@ export type ApiTravi = {
     insert(r: ImmobileInput): Promise<RispostaDb<null>>
     update(id: string, campi: ImmobileInput): Promise<RispostaDb<null>>
     remove(id: string): Promise<RispostaDb<null>>
+  }
+  bm: {
+    /** incarico di Building Management dell'immobile per quell'anno */
+    get(immobileId: string, anno: number): Promise<RispostaDb<IncaricoBM | null>>
+    salva(immobileId: string, anno: number, campi: DatiBM): Promise<RispostaDb<null>>
+    /** anni già compilati per l'immobile, dal più recente */
+    anni(immobileId: string): Promise<RispostaDb<number[]>>
+    /** fornitori già usati, per suggerirli negli altri immobili */
+    fornitori(): Promise<RispostaDb<string[]>>
+    rimuovi(immobileId: string, anno: number): Promise<RispostaDb<null>>
   }
   mappa: {
     apri(query: string, modo: 'finestra' | 'browser'): Promise<RispostaDb<null>>
