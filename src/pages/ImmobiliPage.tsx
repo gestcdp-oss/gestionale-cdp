@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { dbLocale } from '../lib/db'
 import { useSelezione } from '../hooks/useSelezione'
 import { useImmobili } from '../hooks/useImmobili'
 import { usePreferenze } from '../hooks/usePreferenze'
+import { useMappa } from '../hooks/useMappa'
 import type { Immobile } from '../lib/tipi'
 
 const VUOTO = { asset: '', denominazione: '', portafoglio: '', localizzazione: '' }
@@ -21,7 +21,9 @@ export default function ImmobiliPage() {
   const { immobile: selezionato, seleziona } = useSelezione()
   const vaiA = useNavigate()
   // quanti immobili per pagina: scelta ricordata nelle preferenze dell'utente
-  const { perPagina, impostaPerPagina, modoMappa, impostaModoMappa } = usePreferenze()
+  const { perPagina, impostaPerPagina } = usePreferenze()
+  // apertura della mappa (riquadro nella pagina o scheda del browser)
+  const { apri: apriMappa } = useMappa()
 
   // elenco condiviso: le modifiche fatte qui si vedono subito anche altrove
   const { immobili, caricamento, inserisci, aggiorna, elimina } = useImmobili()
@@ -43,9 +45,6 @@ export default function ImmobiliPage() {
   const [eliminaTarget, setEliminaTarget] = useState<Immobile | null>(null)
   const [eliminaErrore, setEliminaErrore] = useState<string | null>(null)
   const [eliminando, setEliminando] = useState(false)
-
-  // mappa: se non c'è ancora una preferenza, la chiediamo al primo utilizzo
-  const [mappaDaAprire, setMappaDaAprire] = useState<string | null>(null)
 
   // torna a pagina 1 quando cambia la ricerca o gli elementi per pagina
   useEffect(() => {
@@ -94,23 +93,6 @@ export default function ImmobiliPage() {
       if (im.denominazione.toLowerCase() === d) return `Esiste già un immobile con Denominazione "${den.trim()}".`
     }
     return null
-  }
-
-  /** Apre la localizzazione in Google Maps; se manca la preferenza, prima la chiede. */
-  function apriMappa(localizzazione: string) {
-    if (!modoMappa) {
-      setMappaDaAprire(localizzazione)
-      return
-    }
-    void dbLocale.mappa.apri(localizzazione, modoMappa)
-  }
-
-  /** Scelta fatta nella finestra: salva la preferenza e apre subito la mappa. */
-  function scegliModoEApri(modo: 'finestra' | 'browser') {
-    const dove = mappaDaAprire
-    impostaModoMappa(modo)
-    setMappaDaAprire(null)
-    if (dove) void dbLocale.mappa.apri(dove, modo)
   }
 
   /** Selezione dell'immobile: si entra subito nella sua Scheda. */
@@ -483,53 +465,6 @@ export default function ImmobiliPage() {
           </div>
         )}
       </section>
-
-      {/* --- prima apertura mappa: scelta (viene salvata nelle preferenze) --- */}
-      {mappaDaAprire && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-velo p-4"
-          onClick={() => setMappaDaAprire(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl border border-cielo-200 bg-panna p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold text-cielo-800">Dove vuoi aprire la mappa?</h3>
-            <p className="mt-2 text-sm text-cielo-700">
-              Scegli come aprire <b>{mappaDaAprire}</b> su Google Maps. La scelta viene ricordata e resta
-              modificabile in <b>Utenti › Preferenze</b>.
-            </p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <button
-                onClick={() => scegliModoEApri('finestra')}
-                className="rounded-xl border border-cielo-300 bg-white p-4 text-left transition hover:border-cielo-400 hover:bg-cielo-50"
-              >
-                <span className="block font-medium text-cielo-800">Nella finestra dell'app</span>
-                <span className="mt-1 block text-xs text-cielo-600">
-                  Finestra ridimensionabile con la sola mappa navigabile.
-                </span>
-              </button>
-              <button
-                onClick={() => scegliModoEApri('browser')}
-                className="rounded-xl border border-cielo-300 bg-white p-4 text-left transition hover:border-cielo-400 hover:bg-cielo-50"
-              >
-                <span className="block font-medium text-cielo-800">Nel browser</span>
-                <span className="mt-1 block text-xs text-cielo-600">
-                  Apre Google Maps completo nel browser predefinito.
-                </span>
-              </button>
-            </div>
-            <div className="mt-5 text-right">
-              <button
-                onClick={() => setMappaDaAprire(null)}
-                className="rounded-lg px-4 py-2 text-sm text-cielo-600 transition hover:bg-cielo-100"
-              >
-                Annulla
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <datalist id="portafogli">
         {portafogli.map((p) => (

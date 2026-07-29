@@ -9,6 +9,7 @@ import { supportaArchivioFile, statoArchivioFile } from './lib/dbBrowser'
 import { PreferenzeProvider } from './hooks/usePreferenze'
 import { SelezioneProvider } from './hooks/useSelezione'
 import { ImmobiliProvider } from './hooks/useImmobili'
+import { MappaProvider } from './hooks/useMappa'
 import Layout from './components/Layout'
 import GestoreAggiornamenti from './components/GestoreAggiornamenti'
 import LoginPage from './pages/LoginPage'
@@ -94,17 +95,19 @@ function Contenuto() {
 
   return (
     <ImmobiliProvider>
-      <HashRouter>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/immobili" element={<ImmobiliPage />} />
-            <Route path="/immobile" element={<SchedaImmobilePage />} />
-            <Route path="/utenti" element={<UtentiPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </HashRouter>
+      <MappaProvider>
+        <HashRouter>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/immobili" element={<ImmobiliPage />} />
+              <Route path="/immobile" element={<SchedaImmobilePage />} />
+              <Route path="/utenti" element={<UtentiPage />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </HashRouter>
+      </MappaProvider>
     </ImmobiliProvider>
   )
 }

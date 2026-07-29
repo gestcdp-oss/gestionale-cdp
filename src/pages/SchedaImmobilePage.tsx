@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { dbLocale } from '../lib/db'
 import { useSelezione } from '../hooks/useSelezione'
 import { useImmobili } from '../hooks/useImmobili'
-import { usePreferenze } from '../hooks/usePreferenze'
+import { useMappa } from '../hooks/useMappa'
 import { GRUPPI_IMMOBILE } from '../lib/menu'
 import Icona from '../components/Icone'
 import type { NomeIcona } from '../components/Icone'
@@ -16,18 +15,23 @@ const VUOTO = { asset: '', denominazione: '', portafoglio: '', localizzazione: '
 export default function SchedaImmobilePage() {
   const { immobile, seleziona } = useSelezione()
   const { immobili, aggiorna } = useImmobili()
-  const { modoMappa } = usePreferenze()
+  const { apri: apriMappa } = useMappa()
   // i dati arrivano dalla fonte condivisa: ogni modifica si riflette ovunque
   const dati = immobili.find((i) => i.id === immobile?.id) ?? null
   const [modifica, setModifica] = useState(false)
   const [form, setForm] = useState(VUOTO)
   const [errore, setErrore] = useState<string | null>(null)
   const [salvataggio, setSalvataggio] = useState(false)
-  // si parte da Street View; dove non c'è copertura Google mostra la mappa
+  // l'anteprima è una sola: Street View quando c'è, altrimenti la mappa
   const [vista, setVista] = useState<Vista>('streetview')
   const [urlAnteprima, setUrlAnteprima] = useState<string | null>(null)
 
   const localizzazione = dati?.localizzazione?.trim() || ''
+
+  // cambiando immobile si riparte sempre da Street View
+  useEffect(() => {
+    setVista('streetview')
+  }, [localizzazione])
 
   useEffect(() => {
     if (!localizzazione) {
@@ -43,12 +47,17 @@ export default function SchedaImmobilePage() {
     }
   }, [localizzazione, vista])
 
-  if (!immobile) return <Navigate to="/immobili" replace />
+  // se il panorama non si carica (rete lenta o embed bloccato) si passa alla
+  // mappa da soli: il riquadro non resta mai vuoto
+  const [caricato, setCaricato] = useState(false)
+  useEffect(() => setCaricato(false), [urlAnteprima])
+  useEffect(() => {
+    if (vista !== 'streetview' || !urlAnteprima || caricato) return
+    const attesa = window.setTimeout(() => setVista('mappa'), 6000)
+    return () => window.clearTimeout(attesa)
+  }, [vista, urlAnteprima, caricato])
 
-  function apriMappa() {
-    if (!localizzazione) return
-    void dbLocale.mappa.apri(localizzazione, modoMappa ?? 'finestra')
-  }
+  if (!immobile) return <Navigate to="/immobili" replace />
 
   function avviaModifica() {
     if (!dati) return
@@ -170,36 +179,27 @@ export default function SchedaImmobilePage() {
           {/* anteprima cartografica */}
           <div>
             {localizzazione ? (
-              <>
-                <div className="mb-2 flex gap-1">
-                  <BottoneVista attiva={vista === 'mappa'} onClick={() => setVista('mappa')}>
-                    Mappa
-                  </BottoneVista>
-                  <BottoneVista attiva={vista === 'streetview'} onClick={() => setVista('streetview')}>
-                    Street View
-                  </BottoneVista>
-                </div>
-                <button
-                  onClick={apriMappa}
-                  title="Apri in Google Maps"
-                  className="group relative block h-56 w-full overflow-hidden rounded-xl border border-cielo-300 bg-panna text-left"
-                >
-                  {urlAnteprima && (
-                    <iframe
-                      key={urlAnteprima}
-                      src={urlAnteprima}
-                      title="Anteprima posizione"
-                      className="pointer-events-none h-full w-full border-0"
-                      loading="lazy"
-                      referrerPolicy="no-referrer-when-downgrade"
-                    />
-                  )}
-                  <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-cielo-800/70 py-1.5 text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
-                    <IconaMappamondo />
-                    Apri in Google Maps
-                  </span>
-                </button>
-              </>
+              <button
+                onClick={() => apriMappa(localizzazione)}
+                title="Apri la mappa"
+                className="group relative block h-56 w-full overflow-hidden rounded-xl border border-cielo-300 bg-panna text-left"
+              >
+                {urlAnteprima && (
+                  <iframe
+                    key={urlAnteprima}
+                    src={urlAnteprima}
+                    title="Anteprima posizione"
+                    onLoad={() => setCaricato(true)}
+                    className="pointer-events-none h-full w-full border-0"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                )}
+                <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-cielo-800/70 py-1.5 text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
+                  <IconaMappamondo />
+                  Apri la mappa
+                </span>
+              </button>
             ) : (
               <Link
                 to="/immobili"
@@ -278,26 +278,6 @@ function Dato({ etichetta, valore, mono }: { etichetta: string; valore: string; 
   )
 }
 
-function BottoneVista({
-  attiva,
-  onClick,
-  children,
-}: {
-  attiva: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-lg px-3 py-1 text-xs font-medium transition ${
-        attiva ? 'bg-cielo-500 text-white' : 'border border-cielo-300 text-cielo-600 hover:bg-panna'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
 
 /** Riquadro di una sezione: stessa dimensione per tutti, va a capo da solo. */
 function Riquadro({
