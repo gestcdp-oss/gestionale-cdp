@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { dbLocale } from '../lib/db'
 import type { ImmobileInput } from '../lib/db'
 import type { Immobile } from '../lib/tipi'
+import { useSelezione } from './useSelezione'
 
 /**
  * Unica fonte dei dati degli immobili: tutte le schermate leggono da qui, così
@@ -40,6 +41,18 @@ export function ImmobiliProvider({ children }: { children: ReactNode }) {
     window.addEventListener('travi-archivio-importato', aggiorna)
     return () => window.removeEventListener('travi-archivio-importato', aggiorna)
   }, [ricarica])
+
+  // Un'importazione rifà gli identificativi degli immobili: l'immobile
+  // selezionato resterebbe agganciato a un identificativo che non esiste più e
+  // le sue pagine (Scheda, Building Manager…) apparirebbero vuote. Qui lo si
+  // ritrova per numero asset, che invece non cambia mai.
+  const { immobile: selezionato, seleziona } = useSelezione()
+  useEffect(() => {
+    if (caricamento || !selezionato || immobili.length === 0) return
+    if (immobili.some((i) => i.id === selezionato.id)) return
+    const stesso = immobili.find((i) => i.asset.toLowerCase() === selezionato.asset.toLowerCase())
+    seleziona(stesso ? { id: stesso.id, asset: stesso.asset, denominazione: stesso.denominazione } : null)
+  }, [immobili, caricamento, selezionato, seleziona])
 
   async function inserisci(r: ImmobileInput): Promise<Esito> {
     const { error } = await dbLocale.immobili.insert(r)

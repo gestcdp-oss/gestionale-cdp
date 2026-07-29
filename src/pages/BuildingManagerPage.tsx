@@ -13,9 +13,12 @@ const ANNO_CORRENTE = new Date().getFullYear()
 
 export default function BuildingManagerPage() {
   const { immobile } = useSelezione()
-  const { immobili } = useImmobili()
+  const { immobili, caricamento: caricamentoImmobili } = useImmobili()
   const toast = useToast()
   const dati = immobili.find((i) => i.id === immobile?.id) ?? null
+  // rete di sicurezza: se l'immobile selezionato non è più nell'archivio, meglio
+  // dirlo che mostrare una scheda vuota senza spiegazioni
+  const immobileSparito = !caricamentoImmobili && immobili.length > 0 && !dati
 
   const [anno, setAnno] = useState(ANNO_CORRENTE)
   const [campi, setCampi] = useState<DatiBM>(datiBMVuoti)
@@ -169,7 +172,15 @@ export default function BuildingManagerPage() {
         {errore && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{errore}</p>}
       </section>
 
-      {caricamento ? (
+      {immobileSparito ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          Questo immobile non risulta più nell'archivio (di solito succede dopo un'importazione).{' '}
+          <Link to="/immobili" className="underline hover:text-amber-900">
+            Riselezionalo dall'elenco
+          </Link>{' '}
+          per vedere il suo incarico.
+        </p>
+      ) : caricamento ? (
         <p className="text-sm text-cielo-500">Caricamento…</p>
       ) : (
         <>
