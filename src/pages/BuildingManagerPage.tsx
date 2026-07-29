@@ -370,7 +370,12 @@ export default function BuildingManagerPage() {
         </>
       )}
 
-      {/* i fornitori nascono dai dati già inseriti, non da un elenco fisso */}
+      {/* suggerimenti: restano scrivibili a mano, non sono un elenco chiuso */}
+      <datalist id="stati-autorizzazione">
+        {STATI_AUTORIZZAZIONE.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
       <ElencoFornitori />
     </div>
   )
@@ -445,9 +450,9 @@ function ElencoFornitori() {
 }
 
 /**
- * Autorizzazione alla fatturazione: vuota, "ok" oppure "inviare". Se in
- * archivio c'è un valore diverso (arrivato da una vecchia importazione) resta
- * disponibile nell'elenco, così non si perde.
+ * Autorizzazione alla fatturazione: si scrive quel che serve. "ok" e "inviare"
+ * sono lì come suggerimento e si colorano da soli; qualsiasi altro testo
+ * (compreso un importo) è ammesso.
  */
 function SceltaAutorizzazione({
   valore,
@@ -459,31 +464,24 @@ function SceltaAutorizzazione({
   grande?: boolean
 }) {
   const attuale = valore ?? ''
-  const opzioni = STATI_AUTORIZZAZIONE.includes(attuale) || attuale === ''
-    ? STATI_AUTORIZZAZIONE
-    : [...STATI_AUTORIZZAZIONE, attuale]
+  const normale = attuale.trim().toLowerCase()
   const colore =
-    attuale === 'ok'
+    normale === 'ok'
       ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-      : attuale === 'inviare'
+      : normale === 'inviare'
         ? 'border-amber-300 bg-amber-50 text-amber-800'
         : 'border-cielo-300 bg-white text-cielo-800'
 
   return (
-    <select
+    <input
+      list="stati-autorizzazione"
       value={attuale}
       onChange={(e) => onCambia(e.target.value || null)}
-      className={`w-full rounded border px-2 outline-none transition focus:border-cielo-400 focus:ring-1 focus:ring-cielo-200 ${colore} ${
-        grande ? 'rounded-lg py-1.5 text-sm' : 'py-1 text-sm'
+      placeholder="ok, inviare, …"
+      className={`w-full rounded border px-2 text-sm outline-none transition focus:border-cielo-400 focus:ring-1 focus:ring-cielo-200 ${colore} ${
+        grande ? 'rounded-lg py-1.5' : 'py-1'
       }`}
-    >
-      <option value="">—</option>
-      {opzioni.map((s) => (
-        <option key={s} value={s}>
-          {s}
-        </option>
-      ))}
-    </select>
+    />
   )
 }
 
