@@ -364,11 +364,57 @@ export async function creaFileArchivio(): Promise<{ ok: boolean; messaggio: stri
   }
 }
 
-/** Apre un archivio esistente e lo carica al posto dei dati di questo browser. */
-export async function apriArchivioDaFile(): Promise<{ ok: boolean; messaggio: string; utenti?: number; immobili?: number }> {
+/**
+ * Sostituisce gli immobili con quelli di un pacchetto di soli dati, lasciando
+ * intatti utenti e preferenze. Usata sia dall'importazione esplicita sia
+ * dall'apertura di un file, così l'utente non deve indovinare il pulsante.
+ */
+async function sostituisciImmobili(righe: ImmobileInput[]): Promise<number> {
+  // niente guardia: le scritture devono finire anche nel file collegato
+  await svuota('immobili')
+  let importati = 0
+  for (const r of righe) {
+    const asset = pulisci(r.asset)
+    const den = pulisci(r.denominazione)
+    if (!asset || !den) continue
+    await metti('immobili', {
+      id: crypto.randomUUID(),
+      asset,
+      denominazione: den,
+      portafoglio: pulisci(r.portafoglio),
+      localizzazione: pulisci(r.localizzazione),
+      creato_il: new Date().toISOString(),
+    } satisfies Immobile)
+    importati++
+  }
+  try {
+    window.dispatchEvent(new CustomEvent('travi-archivio-importato'))
+  } catch {
+    /* ignora */
+  }
+  return importati
+}
+
+/**
+ * Apre un archivio esistente e lo carica al posto dei dati di questo browser.
+ * Se il file scelto contiene SOLI DATI (.travidati, senza utenti) non lo tratta
+ * come errore: ne importa gli immobili e lo segnala con `soloDati`.
+ */
+export async function apriArchivioDaFile(): Promise<{
+  ok: boolean
+  messaggio: string
+  utenti?: number
+  immobili?: number
+  soloDati?: boolean
+}> {
   try {
     const [handle] = await window.showOpenFilePicker!({
-      types: [{ description: 'Archivio TR.A.V.I.', accept: { 'application/json': ['.travidb'] } }],
+      types: [
+        {
+          description: 'Archivio o dati TR.A.V.I.',
+          accept: { 'application/json': ['.travidb', '.travidati', '.json'] },
+        },
+      ],
     })
     if (!handle) return { ok: false, messaggio: '' }
     const testo = await (await handle.getFile()).text()
@@ -382,6 +428,17 @@ export async function apriArchivioDaFile(): Promise<{ ok: boolean; messaggio: st
       dump = JSON.parse(testo)
     } catch {
       throw new Error('Il file non è un archivio TR.A.V.I. valido.')
+    }
+    // file di soli dati: non è un archivio (non contiene utenti), ma i suoi
+    // immobili si possono caricare lo stesso senza toccare gli account
+    if (dump.formato === FORMATO_ESPORTAZIONE && Array.isArray(dump.immobili)) {
+      const importati = await sostituisciImmobili(dump.immobili as ImmobileInput[])
+      return {
+        ok: true,
+        soloDati: true,
+        immobili: importati,
+        messaggio: `"${handle.name}" contiene solo dati (nessun utente): importati ${importati} immobili. Utenti e password restano i tuoi.`,
+      }
     }
     if (dump.formato !== FORMATO_ARCHIVIO || !Array.isArray(dump.utenti)) {
       throw new Error('Il file non è un archivio TR.A.V.I. valido.')
@@ -515,28 +572,7 @@ export async function importaDatiDaArchivio(): Promise<{ ok: boolean; messaggio:
     if (!formatoValido || !Array.isArray(dump.immobili)) {
       throw new Error('Il file non è un archivio TR.A.V.I. valido.')
     }
-    // niente guardia: le scritture devono finire anche nel file collegato
-    await svuota('immobili')
-    let importati = 0
-    for (const r of dump.immobili) {
-      const asset = pulisci(r.asset)
-      const den = pulisci(r.denominazione)
-      if (!asset || !den) continue
-      await metti('immobili', {
-        id: crypto.randomUUID(),
-        asset,
-        denominazione: den,
-        portafoglio: pulisci(r.portafoglio),
-        localizzazione: pulisci(r.localizzazione),
-        creato_il: new Date().toISOString(),
-      } satisfies Immobile)
-      importati++
-    }
-    try {
-      window.dispatchEvent(new CustomEvent('travi-archivio-importato'))
-    } catch {
-      /* ignora */
-    }
+    const importati = await sostituisciImmobili(dump.immobili)
     return { ok: true, messaggio: `Importati ${importati} immobili. I tuoi utenti restano invariati.`, immobili: importati }
   } catch (e) {
     if ((e as Error)?.name === 'AbortError') return { ok: false, messaggio: '' }

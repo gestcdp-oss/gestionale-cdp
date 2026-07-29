@@ -48,6 +48,12 @@ export default function ArchivioFilePannello() {
       if (esito.messaggio) setErrore(esito.messaggio)
       return
     }
+    if (esito.soloDati) {
+      // file di soli dati: gli immobili sono entrati, l'archivio resta il tuo
+      setMessaggio(esito.messaggio)
+      void aggiorna()
+      return
+    }
     // utenti e dati sono cambiati: si riparte puliti dal login
     window.location.reload()
   }
@@ -155,7 +161,8 @@ export default function ArchivioFilePannello() {
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <p>
             Aprendo un archivio da file, <b>i dati presenti in questo browser vengono sostituiti</b> (utenti
-            compresi: rientrerai con le credenziali contenute nell'archivio).
+            compresi: rientrerai con le credenziali contenute nell'archivio). Se invece scegli un file di{' '}
+            <b>soli dati</b> (.travidati) vengono sostituiti solo gli immobili, e i tuoi utenti restano.
           </p>
           <div className="mt-3 flex gap-3">
             <button

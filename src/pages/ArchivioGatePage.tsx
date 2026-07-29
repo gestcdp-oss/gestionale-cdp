@@ -11,6 +11,7 @@ const LOGO = './logo.svg'
  */
 export default function ArchivioGatePage({ onFine }: { onFine: () => void }) {
   const [errore, setErrore] = useState<string | null>(null)
+  const [avviso, setAvviso] = useState<string | null>(null)
   const [attesa, setAttesa] = useState<'crea' | 'apri' | null>(null)
 
   async function crea() {
@@ -27,11 +28,18 @@ export default function ArchivioGatePage({ onFine }: { onFine: () => void }) {
 
   async function apri() {
     setErrore(null)
+    setAvviso(null)
     setAttesa('apri')
     const esito = await apriArchivioDaFile()
     setAttesa(null)
     if (!esito.ok) {
       if (esito.messaggio) setErrore(esito.messaggio)
+      return
+    }
+    if (esito.soloDati) {
+      // era un file di soli dati: gli immobili sono entrati, ma un archivio
+      // vero e proprio ancora non c'è: si resta qui e si crea il file
+      setAvviso(`${esito.messaggio} Adesso premi «Crea un archivio nuovo»: finiranno tutti lì dentro.`)
       return
     }
     // l'archivio (utenti compresi) è stato sostituito: si riparte dal login
@@ -77,11 +85,12 @@ export default function ArchivioGatePage({ onFine }: { onFine: () => void }) {
             </span>
             <span className="mt-1 block text-xs leading-snug text-cielo-600">
               Hai già un file TR.A.V.I. (tuo o ricevuto)? Aprilo: verrà caricato tutto, utenti compresi, e si
-              entra con le credenziali di quell'archivio.
+              entra con le credenziali di quell'archivio. Va bene anche un file di soli dati (.travidati).
             </span>
           </button>
         </div>
 
+        {avviso && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{avviso}</p>}
         {errore && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{errore}</p>}
 
         <p className="mt-5 text-center text-xs text-cielo-500">
