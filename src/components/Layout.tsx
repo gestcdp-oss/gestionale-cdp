@@ -62,13 +62,15 @@ export default function Layout() {
       {/* HEADER */}
       <header className="flex shrink-0 items-center justify-between gap-4 border-b border-cielo-200 bg-panna px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-3">
-          <Link to="/" className="flex shrink-0 items-center gap-2" title="Vai alla home">
-            <img src={LOGO} alt="TR.A.V.I." className="h-10 w-10" />
-            <span className="leading-tight">
-              <span className="block text-lg font-bold tracking-tight text-cielo-800">TR.A.V.I.</span>
-              <span className="block text-[10px] uppercase tracking-wide text-cielo-500">
-                Tracciamento Attività e Verifica Immobili
-              </span>
+          <Link to="/" className="flex shrink-0 flex-col items-center gap-0.5" title="Vai alla home">
+            <span className="flex items-center gap-2">
+              <img src={LOGO} alt="TR.A.V.I." className="h-10 w-10" />
+              <span className="text-lg font-bold tracking-tight text-cielo-800">TR.A.V.I.</span>
+            </span>
+            {/* sottotitolo centrato sotto il logo, sempre su due righe */}
+            <span className="block text-center text-[10px] uppercase leading-tight tracking-wide text-cielo-500">
+              Tracciamento Attività
+              <br />e Verifica Immobili
             </span>
           </Link>
 

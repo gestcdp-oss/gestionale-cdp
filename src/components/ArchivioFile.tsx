@@ -4,7 +4,6 @@ import {
   creaFileArchivio,
   apriArchivioDaFile,
   salvaArchivioOra,
-  scollegaFileArchivio,
   creaNuovoArchivio,
   esportaCopiaArchivio,
   importaDatiDaArchivio,
@@ -58,12 +57,6 @@ export default function ArchivioFilePannello() {
     setErrore(null)
     const esito = await salvaArchivioOra()
     ;(esito.ok ? setMessaggio : setErrore)(esito.messaggio)
-    void aggiorna()
-  }
-
-  async function scollega() {
-    await scollegaFileArchivio()
-    setMessaggio('File scollegato: i dati restano solo nella memoria del browser.')
     void aggiorna()
   }
 
@@ -138,12 +131,6 @@ export default function ArchivioFilePannello() {
               className="rounded-lg border border-cielo-300 px-4 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50"
             >
               Apri un altro archivio
-            </button>
-            <button
-              onClick={() => void scollega()}
-              className="rounded-lg px-4 py-2 text-sm text-cielo-500 transition hover:bg-cielo-100"
-            >
-              Scollega
             </button>
           </>
         ) : (

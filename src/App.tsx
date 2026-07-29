@@ -52,13 +52,8 @@ function Contenuto() {
     let vivo = true
     void statoArchivioFile().then((s) => {
       if (!vivo) return
-      let rimandato = false
-      try {
-        rimandato = sessionStorage.getItem('travi_gate_rimandato') === 'si'
-      } catch {
-        /* ignora */
-      }
-      setGateArchivio(s.supportato && !s.collegato && !rimandato)
+      // regola fissa: senza un file archivio collegato non si entra
+      setGateArchivio(s.supportato && !s.collegato)
     })
     return () => {
       vivo = false

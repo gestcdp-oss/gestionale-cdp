@@ -38,15 +38,6 @@ export default function ArchivioGatePage({ onFine }: { onFine: () => void }) {
     window.location.reload()
   }
 
-  function nonOra() {
-    try {
-      sessionStorage.setItem('travi_gate_rimandato', 'si')
-    } catch {
-      /* ignora */
-    }
-    onFine()
-  }
-
   return (
     <div className="flex min-h-full items-center justify-center overflow-y-auto bg-cielo-100 p-6">
       <div className="w-full max-w-xl rounded-2xl border border-cielo-200 bg-panna p-8 shadow-sm">
@@ -93,11 +84,9 @@ export default function ArchivioGatePage({ onFine }: { onFine: () => void }) {
 
         {errore && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{errore}</p>}
 
-        <div className="mt-5 text-center">
-          <button onClick={nonOra} className="text-xs text-cielo-500 underline hover:text-cielo-700">
-            Non ora: continua senza file (i dati restano solo in questo browser)
-          </button>
-        </div>
+        <p className="mt-5 text-center text-xs text-cielo-500">
+          Per lavorare serve un file archivio: scegli una delle due opzioni.
+        </p>
       </div>
     </div>
   )
