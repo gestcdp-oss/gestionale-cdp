@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { creaFileArchivio, apriArchivioDaFile } from '../lib/dbBrowser'
+import { scegliPosizioneArchivio, apriArchivioDaFile } from '../lib/dbBrowser'
 
 const LOGO = './logo.svg'
 
@@ -16,8 +16,9 @@ export default function ArchivioGatePage({ onFine }: { onFine: () => void }) {
 
   async function crea() {
     setErrore(null)
+    setAvviso(null)
     setAttesa('crea')
-    const esito = await creaFileArchivio()
+    const esito = await scegliPosizioneArchivio()
     setAttesa(null)
     if (!esito.ok) {
       if (esito.messaggio) setErrore(esito.messaggio)
@@ -66,11 +67,12 @@ export default function ArchivioGatePage({ onFine }: { onFine: () => void }) {
           >
             <span className="block text-2xl">🆕</span>
             <span className="mt-2 block font-semibold text-cielo-800">
-              {attesa === 'crea' ? 'Creazione…' : 'Crea un archivio nuovo'}
+              {attesa === 'crea' ? 'Creazione…' : 'Scegli la posizione dell\'archivio'}
             </span>
             <span className="mt-1 block text-xs leading-snug text-cielo-600">
-              Scegli dove salvare il file (consigliato: Documenti). I dati presenti in questo browser vengono
-              conservati e salvati lì.
+              Scegli la <b>cartella</b> dove tenere l'archivio (consigliato: Documenti). Lì dentro nascono il
+              file TRAVI-archivio.travidb e la cartella backup con le copie di sicurezza. I dati presenti in
+              questo browser vengono conservati e salvati lì.
             </span>
           </button>
 

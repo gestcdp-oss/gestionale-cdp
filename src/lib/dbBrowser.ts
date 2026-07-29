@@ -18,12 +18,28 @@ const FORMATO_ESPORTAZIONE = 'travi-dati-1'
 const FORMATO_ARCHIVIO = 'travi-archivio-1'
 const CHIAVE_SESSIONE = 'travi_sessione'
 
+// nome del file dell'archivio dentro la cartella scelta dall'utente
+const NOME_ARCHIVIO = 'TRAVI-archivio.travidb'
+const CARTELLA_BACKUP = 'backup'
+const MAX_BACKUP = 30
+
 // --- accesso ai file del computer (Edge/Chrome): dichiarazioni minime ---
 type PermessoFile = 'granted' | 'denied' | 'prompt'
 interface HandleFile {
   name: string
+  kind?: string
   getFile(): Promise<File>
   createWritable(): Promise<{ write(d: string): Promise<void>; close(): Promise<void> }>
+  queryPermission?(d: { mode: 'readwrite' }): Promise<PermessoFile>
+  requestPermission?(d: { mode: 'readwrite' }): Promise<PermessoFile>
+}
+interface HandleCartella {
+  name: string
+  kind?: string
+  getFileHandle(nome: string, opzioni?: { create?: boolean }): Promise<HandleFile>
+  getDirectoryHandle(nome: string, opzioni?: { create?: boolean }): Promise<HandleCartella>
+  removeEntry(nome: string, opzioni?: { recursive?: boolean }): Promise<void>
+  values(): AsyncIterable<HandleFile | HandleCartella>
   queryPermission?(d: { mode: 'readwrite' }): Promise<PermessoFile>
   requestPermission?(d: { mode: 'readwrite' }): Promise<PermessoFile>
 }
@@ -31,6 +47,7 @@ declare global {
   interface Window {
     showSaveFilePicker?: (opzioni?: unknown) => Promise<HandleFile>
     showOpenFilePicker?: (opzioni?: unknown) => Promise<HandleFile[]>
+    showDirectoryPicker?: (opzioni?: unknown) => Promise<HandleCartella>
   }
 }
 
@@ -126,6 +143,38 @@ async function leggiHandle(): Promise<HandleFile | null> {
   }
 }
 
+/** Cartella scelta dall'utente: dentro ci stanno l'archivio e le sue copie. */
+async function leggiCartella(): Promise<HandleCartella | null> {
+  try {
+    const riga = await prendiMeta('cartellaArchivio')
+    return (riga?.h as HandleCartella) ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Verifica (ed eventualmente chiede) il permesso di scrittura su file o cartella. */
+async function permessoScrittura(
+  handle: { queryPermission?: (d: { mode: 'readwrite' }) => Promise<PermessoFile>; requestPermission?: (d: { mode: 'readwrite' }) => Promise<PermessoFile> },
+  conRichiesta: boolean,
+): Promise<boolean> {
+  // se il browser non espone i permessi sull'handle, si prova a scrivere:
+  // in caso di rifiuto sarà la scrittura stessa a fallire
+  if (typeof handle.queryPermission !== 'function') return true
+  let permesso: PermessoFile = await handle.queryPermission({ mode: 'readwrite' })
+  if (permesso === 'prompt' && conRichiesta) {
+    permesso = (await handle.requestPermission?.({ mode: 'readwrite' })) ?? 'denied'
+  }
+  return permesso === 'granted'
+}
+
+/** Marca temporale ordinabile per i nomi delle copie: 2026-07-29_1145-30 */
+function marcaTemporale(): string {
+  const d = new Date()
+  const due = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}_${due(d.getHours())}${due(d.getMinutes())}-${due(d.getSeconds())}`
+}
+
 async function generaDump(): Promise<{ testo: string; salvatoIl: string }> {
   const [utenti, immobili, preferenze] = await Promise.all([
     tutti<UtenteArchivio>('utenti'),
@@ -163,11 +212,7 @@ async function specchiaOra(conRichiesta: boolean): Promise<boolean> {
   try {
     const handle = await leggiHandle()
     if (!handle) return false
-    let permesso: PermessoFile = (await handle.queryPermission?.({ mode: 'readwrite' })) ?? 'prompt'
-    if (permesso === 'prompt' && conRichiesta) {
-      permesso = (await handle.requestPermission?.({ mode: 'readwrite' })) ?? 'denied'
-    }
-    if (permesso !== 'granted') return false
+    if (!(await permessoScrittura(handle, conRichiesta))) return false
     const { testo, salvatoIl } = await generaDump()
     const w = await handle.createWritable()
     await w.write(testo)
@@ -188,11 +233,7 @@ async function sincronizzaDaFile(conRichiesta: boolean): Promise<'importato' | '
   try {
     const handle = await leggiHandle()
     if (!handle) return 'niente'
-    let permesso: PermessoFile = (await handle.queryPermission?.({ mode: 'readwrite' })) ?? 'prompt'
-    if (permesso === 'prompt' && conRichiesta) {
-      permesso = (await handle.requestPermission?.({ mode: 'readwrite' })) ?? 'denied'
-    }
-    if (permesso !== 'granted') return 'niente'
+    if (!(await permessoScrittura(handle, conRichiesta))) return 'niente'
 
     const testo = await (await handle.getFile()).text()
     let dump: {
@@ -326,38 +367,220 @@ export type StatoArchivioFile = {
   supportato: boolean
   collegato: boolean
   nomeFile: string
+  /** cartella scelta dall'utente: lì stanno l'archivio e la sottocartella backup */
+  cartella: string
   ultimoSalvataggio: string
   permesso: PermessoFile | 'n/d'
 }
 
 export async function statoArchivioFile(): Promise<StatoArchivioFile> {
   if (!supportaArchivioFile()) {
-    return { supportato: false, collegato: false, nomeFile: '', ultimoSalvataggio: '', permesso: 'n/d' }
+    return { supportato: false, collegato: false, nomeFile: '', cartella: '', ultimoSalvataggio: '', permesso: 'n/d' }
   }
   const handle = await leggiHandle()
+  const cartella = await leggiCartella()
   const ultimo = await prendiMeta('ultimoSalvataggioFile')
   return {
     supportato: true,
     collegato: Boolean(handle),
     nomeFile: handle?.name ?? '',
+    cartella: cartella?.name ?? '',
     ultimoSalvataggio: String(ultimo?.v ?? ''),
     permesso: handle ? ((await handle.queryPermission?.({ mode: 'readwrite' })) ?? 'prompt') : 'n/d',
   }
 }
 
-/** Crea (o sceglie) il file dell'archivio e ci salva subito tutto. */
-export async function creaFileArchivio(): Promise<{ ok: boolean; messaggio: string }> {
+// ------------------------------------------------------------- copie di sicurezza
+
+/** Scrive un testo nella sottocartella "backup" (creandola se non c'è). */
+async function scriviBackup(testo: string, etichetta: string): Promise<string | null> {
+  const cartella = await leggiCartella()
+  if (!cartella) return null
+  if (!(await permessoScrittura(cartella, false))) return null
   try {
-    const handle = await window.showSaveFilePicker!({
-      suggestedName: 'TRAVI-archivio.travidb',
-      startIn: 'documents',
-      types: [{ description: 'Archivio TR.A.V.I.', accept: { 'application/json': ['.travidb'] } }],
-    })
-    await metti('meta', { k: 'fileArchivio', h: handle })
+    const dir = await cartella.getDirectoryHandle(CARTELLA_BACKUP, { create: true })
+    const nome = await nomeLibero(dir, `TRAVI-${etichetta}-${marcaTemporale()}`)
+    const h = await dir.getFileHandle(nome, { create: true })
+    const w = await h.createWritable()
+    await w.write(testo)
+    await w.close()
+    await potaBackup(dir)
+    return nome
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Nome non ancora usato dentro la cartella: due salvataggi nello stesso secondo
+ * devono restare due copie distinte, non una sovrascritta.
+ */
+async function nomeLibero(dir: HandleCartella, base: string): Promise<string> {
+  for (let n = 1; n <= 99; n++) {
+    const nome = n === 1 ? `${base}.travidb` : `${base}-${String(n).padStart(2, '0')}.travidb`
+    try {
+      await dir.getFileHandle(nome)
+    } catch {
+      return nome // non esiste: è libero
+    }
+  }
+  return `${base}-${Math.floor(Math.random() * 1000)}.travidb`
+}
+
+/** Tiene solo le copie più recenti: le vecchie vengono eliminate. */
+async function potaBackup(dir: HandleCartella): Promise<void> {
+  try {
+    const nomi: string[] = []
+    for await (const voce of dir.values()) {
+      if (voce.kind !== 'directory' && voce.name.endsWith('.travidb')) nomi.push(voce.name)
+    }
+    // la marca temporale nel nome rende l'ordine alfabetico anche cronologico
+    nomi.sort()
+    for (const vecchio of nomi.slice(0, Math.max(0, nomi.length - MAX_BACKUP))) {
+      await dir.removeEntry(vecchio)
+    }
+  } catch {
+    /* la pulizia non deve mai far fallire il salvataggio */
+  }
+}
+
+export type VoceBackup = { nome: string; data: string; dimensione: number }
+
+/** Elenca le copie presenti nella cartella backup, dalla più recente. */
+export async function elencaBackup(): Promise<VoceBackup[]> {
+  const cartella = await leggiCartella()
+  if (!cartella) return []
+  try {
+    if (!(await permessoScrittura(cartella, true))) return []
+    const dir = await cartella.getDirectoryHandle(CARTELLA_BACKUP, { create: true })
+    const voci: VoceBackup[] = []
+    for await (const voce of dir.values()) {
+      if (voce.kind === 'directory' || !voce.name.endsWith('.travidb')) continue
+      const f = await (voce as HandleFile).getFile()
+      voci.push({ nome: voce.name, data: new Date(f.lastModified).toISOString(), dimensione: f.size })
+    }
+    return voci.sort((a, b) => (a.data < b.data ? 1 : -1))
+  } catch {
+    return []
+  }
+}
+
+/** Ripristina i dati da una copia: sostituisce tutto, utenti compresi. */
+export async function ripristinaDaBackup(nome: string): Promise<{ ok: boolean; messaggio: string }> {
+  try {
+    const cartella = await leggiCartella()
+    if (!cartella) return { ok: false, messaggio: 'Nessuna cartella archivio impostata.' }
+    if (!(await permessoScrittura(cartella, true))) {
+      return { ok: false, messaggio: 'Permesso negato sulla cartella dell\'archivio.' }
+    }
+    const dir = await cartella.getDirectoryHandle(CARTELLA_BACKUP, { create: true })
+    const h = await dir.getFileHandle(nome)
+    const dump = JSON.parse(await (await h.getFile()).text()) as {
+      formato?: string
+      utenti?: UtenteArchivio[]
+      immobili?: Immobile[]
+      preferenze?: { k: string; v: string }[]
+    }
+    if (dump.formato !== FORMATO_ARCHIVIO || !Array.isArray(dump.utenti)) {
+      return { ok: false, messaggio: 'Questa copia non è leggibile.' }
+    }
+    // prima di sovrascrivere, si mette al sicuro lo stato attuale
+    const { testo } = await generaDump()
+    await scriviBackup(testo, 'prima-del-ripristino')
+    inSincronizzazione = true
+    try {
+      await svuota('utenti')
+      await svuota('immobili')
+      await svuota('preferenze')
+      for (const u of dump.utenti) await metti('utenti', u)
+      for (const i of dump.immobili ?? []) await metti('immobili', i)
+      for (const p of dump.preferenze ?? []) await metti('preferenze', p)
+    } finally {
+      inSincronizzazione = false
+    }
+    await specchiaOra(true)
+    const sess = leggiSessione()
+    if (sess && !dump.utenti.some((u) => u.id === sess.id)) scriviSessione(null)
+    try {
+      window.dispatchEvent(new CustomEvent('travi-archivio-importato'))
+    } catch {
+      /* ignora */
+    }
+    return {
+      ok: true,
+      messaggio: `Ripristinata la copia ${nome}: ${(dump.immobili ?? []).length} immobili e ${dump.utenti.length} utenti.`,
+    }
+  } catch (e) {
+    return { ok: false, messaggio: String((e as Error)?.message ?? e) }
+  }
+}
+
+/** Elimina dal computer il file dell'archivio in uso. Le copie restano. */
+export async function cancellaArchivioFile(): Promise<{ ok: boolean; messaggio: string }> {
+  try {
+    const cartella = await leggiCartella()
+    const handle = await leggiHandle()
+    if (!handle) return { ok: false, messaggio: 'Nessun archivio in uso.' }
+    // copia di sicurezza prima di cancellare: il ripristino resta sempre possibile
+    const { testo } = await generaDump()
+    const copia = await scriviBackup(testo, 'prima-della-cancellazione')
+    if (cartella) {
+      if (!(await permessoScrittura(cartella, true))) {
+        return { ok: false, messaggio: 'Permesso negato sulla cartella dell\'archivio.' }
+      }
+      try {
+        await cartella.removeEntry(handle.name)
+      } catch {
+        return { ok: false, messaggio: 'Il file non è stato trovato nella cartella: potrebbe essere già stato spostato.' }
+      }
+    }
+    await togli('meta', 'fileArchivio')
+    await togli('meta', 'ultimoSalvataggioFile')
+    return {
+      ok: true,
+      messaggio: cartella
+        ? `Archivio "${handle.name}" eliminato dal computer.${copia ? ` Copia di sicurezza salvata in ${CARTELLA_BACKUP}\\${copia}.` : ''}`
+        : `Archivio scollegato. Il file "${handle.name}" va eliminato a mano: senza cartella impostata il programma non può toccarlo.`,
+    }
+  } catch (e) {
+    return { ok: false, messaggio: String((e as Error)?.message ?? e) }
+  }
+}
+
+/**
+ * Sceglie la CARTELLA dove vive l'archivio (predefinita: Documenti) e vi
+ * installa il file dell'archivio, con dentro i dati attuali. È l'unica porta
+ * per decidere "dove si salva": la usano anche crea/apri/importa.
+ */
+export async function scegliPosizioneArchivio(): Promise<{ ok: boolean; messaggio: string }> {
+  try {
+    if (!window.showDirectoryPicker) {
+      return { ok: false, messaggio: 'Questo browser non permette di scegliere una cartella: usa Edge o Chrome.' }
+    }
+    const cartella = await window.showDirectoryPicker({ mode: 'readwrite', startIn: 'documents' })
+    if (!(await permessoScrittura(cartella, true))) {
+      return { ok: false, messaggio: 'Permesso di scrittura negato sulla cartella scelta.' }
+    }
+    await metti('meta', { k: 'cartellaArchivio', h: cartella })
+
+    // se lì c'è già un archivio, se ne conserva una copia prima di sostituirlo
+    let esistente: string | null = null
+    try {
+      const vecchio = await cartella.getFileHandle(NOME_ARCHIVIO)
+      esistente = await (await vecchio.getFile()).text()
+    } catch {
+      /* nessun archivio precedente in questa cartella */
+    }
+    if (esistente) await scriviBackup(esistente, 'archivio-sostituito')
+
+    const file = await cartella.getFileHandle(NOME_ARCHIVIO, { create: true })
+    await metti('meta', { k: 'fileArchivio', h: file })
     const scritto = await specchiaOra(true)
-    return scritto
-      ? { ok: true, messaggio: `Archivio collegato: ${handle.name}. D'ora in poi ogni modifica viene salvata anche lì.` }
-      : { ok: false, messaggio: 'File scelto ma scrittura non riuscita: riprova con "Salva ora".' }
+    if (!scritto) return { ok: false, messaggio: 'Cartella scelta ma scrittura non riuscita: riprova con "Salva ora".' }
+    return {
+      ok: true,
+      messaggio: `Archivio in uso: ${cartella.name}\\${NOME_ARCHIVIO}.${esistente ? ' L\'archivio che era già lì è stato messo nella cartella backup.' : ''}`,
+    }
   } catch (e) {
     if ((e as Error)?.name === 'AbortError') return { ok: false, messaggio: '' }
     return { ok: false, messaggio: String((e as Error)?.message ?? e) }
@@ -479,43 +702,32 @@ export async function apriArchivioDaFile(): Promise<{
  */
 export async function creaNuovoArchivio(): Promise<{ ok: boolean; messaggio: string }> {
   try {
-    const handle = await window.showSaveFilePicker!({
-      suggestedName: 'TRAVI-archivio.travidb',
-      startIn: 'documents',
-      types: [{ description: 'Archivio TR.A.V.I.', accept: { 'application/json': ['.travidb'] } }],
-    })
-    // copia di sicurezza dei dati attuali (best effort, prima di azzerare)
-    try {
-      const attuali = await tutti<Immobile>('immobili')
-      if (attuali.length > 0) {
-        scaricaFile(
-          `TRAVI-backup-prima-nuovo-archivio-${new Date().toISOString().slice(0, 10)}.travidati`,
-          JSON.stringify(
-            {
-              formato: FORMATO_ESPORTAZIONE,
-              versione_app: __APP_VERSION__,
-              esportato_il: new Date().toISOString(),
-              esportato_da: (await utenteCorrente())?.email ?? '',
-              immobili: attuali.map((i) => ({
-                asset: i.asset,
-                denominazione: i.denominazione,
-                portafoglio: i.portafoglio,
-                localizzazione: i.localizzazione,
-              })),
-            },
-            null,
-            1,
-          ),
-        )
-      }
-    } catch {
-      /* il backup non blocca l'operazione */
+    if (!window.showDirectoryPicker) {
+      return { ok: false, messaggio: 'Questo browser non permette di scegliere una cartella: usa Edge o Chrome.' }
     }
+    const cartella = await window.showDirectoryPicker({ mode: 'readwrite', startIn: 'documents' })
+    if (!(await permessoScrittura(cartella, true))) {
+      return { ok: false, messaggio: 'Permesso di scrittura negato sulla cartella scelta.' }
+    }
+    await metti('meta', { k: 'cartellaArchivio', h: cartella })
+
+    // copia di sicurezza dello stato attuale, prima di azzerare
+    const { testo } = await generaDump()
+    const copia = await scriviBackup(testo, 'prima-del-nuovo-archivio')
+    // e copia anche dell'archivio che eventualmente si trovava già lì
+    try {
+      const vecchio = await cartella.getFileHandle(NOME_ARCHIVIO)
+      await scriviBackup(await (await vecchio.getFile()).text(), 'archivio-sostituito')
+    } catch {
+      /* nessun archivio precedente in questa cartella */
+    }
+
+    const file = await cartella.getFileHandle(NOME_ARCHIVIO, { create: true })
     inSincronizzazione = true
     try {
       await svuota('immobili')
       await svuota('preferenze')
-      await metti('meta', { k: 'fileArchivio', h: handle })
+      await metti('meta', { k: 'fileArchivio', h: file })
     } finally {
       inSincronizzazione = false
     }
@@ -526,7 +738,10 @@ export async function creaNuovoArchivio(): Promise<{ ok: boolean; messaggio: str
       /* ignora */
     }
     return scritto
-      ? { ok: true, messaggio: `Nuovo archivio creato: ${handle.name}. Utenti mantenuti, dati azzerati.` }
+      ? {
+          ok: true,
+          messaggio: `Nuovo archivio creato in ${cartella.name}\\${NOME_ARCHIVIO}. Utenti mantenuti, dati azzerati.${copia ? ` Copia di sicurezza: ${CARTELLA_BACKUP}\\${copia}.` : ''}`,
+        }
       : { ok: false, messaggio: 'Archivio azzerato ma scrittura del file non riuscita: usa "Salva ora".' }
   } catch (e) {
     if ((e as Error)?.name === 'AbortError') return { ok: false, messaggio: '' }
@@ -580,11 +795,24 @@ export async function importaDatiDaArchivio(): Promise<{ ok: boolean; messaggio:
   }
 }
 
+/**
+ * Salvataggio richiesto dall'utente: scrive l'archivio e ne mette una copia
+ * datata nella sottocartella "backup", accanto all'archivio stesso (la cartella
+ * viene creata se non c'è). Il salvataggio automatico, invece, non fa copie.
+ */
 export async function salvaArchivioOra(): Promise<{ ok: boolean; messaggio: string }> {
   const scritto = await specchiaOra(true)
-  return scritto
-    ? { ok: true, messaggio: 'Archivio salvato sul file.' }
-    : { ok: false, messaggio: 'Salvataggio non riuscito: nessun file collegato o permesso negato.' }
+  if (!scritto) {
+    return { ok: false, messaggio: 'Salvataggio non riuscito: nessun archivio in uso o permesso negato.' }
+  }
+  const { testo } = await generaDump()
+  const copia = await scriviBackup(testo, 'backup')
+  return {
+    ok: true,
+    messaggio: copia
+      ? `Archivio salvato, con copia in ${CARTELLA_BACKUP}\\${copia}.`
+      : 'Archivio salvato. Per avere anche le copie di sicurezza imposta la posizione con «Scegli la posizione dell\'archivio».',
+  }
 }
 
 export async function scollegaFileArchivio(): Promise<void> {

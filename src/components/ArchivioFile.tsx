@@ -1,27 +1,37 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   statoArchivioFile,
-  creaFileArchivio,
+  scegliPosizioneArchivio,
   apriArchivioDaFile,
   salvaArchivioOra,
   creaNuovoArchivio,
   esportaCopiaArchivio,
   importaDatiDaArchivio,
+  elencaBackup,
+  ripristinaDaBackup,
+  cancellaArchivioFile,
 } from '../lib/dbBrowser'
-import type { StatoArchivioFile } from '../lib/dbBrowser'
+import type { StatoArchivioFile, VoceBackup } from '../lib/dbBrowser'
 
 /**
- * Pannello "Archivio su file": collega l'archivio a un file vero del computer.
- * Il file sopravvive alle pulizie del browser e può essere aperto anche da un
- * browser diverso (stessi dati ovunque). Solo versione browser.
+ * Pannello "Archivio su file": l'archivio vive in una cartella scelta
+ * dall'utente (di norma Documenti), insieme alla sottocartella "backup" con le
+ * copie datate. Da qui si sceglie la posizione, si salva, si ripristina una
+ * copia e si cancella l'archivio. Solo versione browser.
  */
 export default function ArchivioFilePannello() {
   const [stato, setStato] = useState<StatoArchivioFile | null>(null)
   const [messaggio, setMessaggio] = useState<string | null>(null)
   const [errore, setErrore] = useState<string | null>(null)
+  const [chiediPosizione, setChiediPosizione] = useState(false)
   const [confermaApertura, setConfermaApertura] = useState(false)
   const [confermaImporta, setConfermaImporta] = useState(false)
   const [confermaNuovo, setConfermaNuovo] = useState(false)
+  const [confermaCancella, setConfermaCancella] = useState(false)
+  const [copie, setCopie] = useState<VoceBackup[] | null>(null)
+  const [copiaScelta, setCopiaScelta] = useState<string | null>(null)
+  const [attesa, setAttesa] = useState(false)
 
   async function aggiorna() {
     setStato(await statoArchivioFile())
@@ -31,17 +41,21 @@ export default function ArchivioFilePannello() {
     void aggiorna()
   }, [])
 
-  async function crea() {
+  function ripulisci() {
     setMessaggio(null)
     setErrore(null)
-    const esito = await creaFileArchivio()
+  }
+
+  async function scegliPosizione() {
+    ripulisci()
+    setChiediPosizione(false)
+    const esito = await scegliPosizioneArchivio()
     if (esito.messaggio) (esito.ok ? setMessaggio : setErrore)(esito.messaggio)
     void aggiorna()
   }
 
   async function apri() {
-    setMessaggio(null)
-    setErrore(null)
+    ripulisci()
     setConfermaApertura(false)
     const esito = await apriArchivioDaFile()
     if (!esito.ok) {
@@ -49,8 +63,8 @@ export default function ArchivioFilePannello() {
       return
     }
     if (esito.soloDati) {
-      // file di soli dati: gli immobili sono entrati, l'archivio resta il tuo
       setMessaggio(esito.messaggio)
+      setChiediPosizione(true)
       void aggiorna()
       return
     }
@@ -59,45 +73,83 @@ export default function ArchivioFilePannello() {
   }
 
   async function salvaOra() {
-    setMessaggio(null)
-    setErrore(null)
+    ripulisci()
+    setAttesa(true)
     const esito = await salvaArchivioOra()
+    setAttesa(false)
     ;(esito.ok ? setMessaggio : setErrore)(esito.messaggio)
     void aggiorna()
   }
 
   async function esportaCopia() {
-    setMessaggio(null)
-    setErrore(null)
+    ripulisci()
     const esito = await esportaCopiaArchivio()
     ;(esito.ok ? setMessaggio : setErrore)(esito.messaggio)
   }
 
   async function importaDati() {
-    setMessaggio(null)
-    setErrore(null)
+    ripulisci()
     setConfermaImporta(false)
     const esito = await importaDatiDaArchivio()
     if (esito.messaggio) (esito.ok ? setMessaggio : setErrore)(esito.messaggio)
+    if (esito.ok) setChiediPosizione(true)
+    void aggiorna()
   }
 
   async function nuovoArchivio() {
-    setMessaggio(null)
-    setErrore(null)
+    ripulisci()
     setConfermaNuovo(false)
     const esito = await creaNuovoArchivio()
     if (esito.messaggio) (esito.ok ? setMessaggio : setErrore)(esito.messaggio)
     void aggiorna()
   }
 
+  async function cancella() {
+    ripulisci()
+    setConfermaCancella(false)
+    const esito = await cancellaArchivioFile()
+    if (esito.messaggio) (esito.ok ? setMessaggio : setErrore)(esito.messaggio)
+    setCopie(null)
+    void aggiorna()
+  }
+
+  async function mostraCopie() {
+    ripulisci()
+    setAttesa(true)
+    const elenco = await elencaBackup()
+    setAttesa(false)
+    setCopie(elenco)
+    if (elenco.length === 0) {
+      setErrore(
+        stato?.cartella
+          ? 'Nessuna copia di sicurezza ancora presente: usa «Salva ora» per crearne una.'
+          : 'Per avere le copie di sicurezza imposta prima la posizione dell\'archivio.',
+      )
+    }
+  }
+
+  async function ripristina() {
+    if (!copiaScelta) return
+    ripulisci()
+    const nome = copiaScelta
+    setCopiaScelta(null)
+    setAttesa(true)
+    const esito = await ripristinaDaBackup(nome)
+    setAttesa(false)
+    if (esito.messaggio) (esito.ok ? setMessaggio : setErrore)(esito.messaggio)
+    void aggiorna()
+  }
+
   if (!stato) return <p className="text-sm text-cielo-500">Caricamento…</p>
+
+  const posizione = stato.cartella ? `${stato.cartella}\\${stato.nomeFile}` : stato.nomeFile
 
   return (
     <div>
       {stato.collegato ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
           <p>
-            ✅ Archivio collegato al file <b>{stato.nomeFile}</b>
+            ✅ Archivio in uso: <b>{posizione}</b>
             {stato.ultimoSalvataggio && (
               <> — ultimo salvataggio {new Date(stato.ultimoSalvataggio).toLocaleString('it-IT')}</>
             )}
@@ -105,8 +157,10 @@ export default function ArchivioFilePannello() {
           </p>
           <p className="mt-1 text-xs opacity-80">
             Ogni modifica viene salvata anche lì, e a ogni apertura o accesso il browser si riallinea dal file:
-            puoi usare Edge e Chrome alternandoli, i dati sono sempre gli stessi. In un browser nuovo basta
-            scegliere questo file una volta con «Apri l'archivio dal file salvato».
+            puoi usare Edge e Chrome alternandoli, i dati sono sempre gli stessi.
+            {stato.cartella
+              ? ` Le copie di sicurezza stanno in ${stato.cartella}\\backup.`
+              : ' Per avere anche le copie di sicurezza scegli la posizione dell\'archivio.'}
             {stato.permesso !== 'granted' && (
               <>
                 {' '}
@@ -117,45 +171,65 @@ export default function ArchivioFilePannello() {
         </div>
       ) : (
         <p className="rounded-xl bg-amber-50 p-4 text-sm leading-relaxed text-amber-800">
-          <b>Consigliato.</b> Adesso i dati vivono solo nella memoria di questo browser: una «pulizia dati» li
-          cancellerebbe. Collegando un file (per esempio in Documenti), tutto viene salvato anche lì: il file
+          <b>Nessun archivio in uso.</b> Adesso i dati vivono solo nella memoria di questo browser: una
+          «pulizia dati» li cancellerebbe. Scegli la posizione dell'archivio (di norma Documenti): il file
           sopravvive alle pulizie, si può copiare come backup e si può aprire da un altro browser.
         </p>
       )}
 
       <div className="mt-4 flex flex-wrap gap-3">
-        {stato.collegato ? (
-          <>
-            <button
-              onClick={() => void salvaOra()}
-              className="rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
-            >
-              Salva ora
-            </button>
-            <button
-              onClick={() => setConfermaApertura(true)}
-              className="rounded-lg border border-cielo-300 px-4 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50"
-            >
-              Apri un altro archivio
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={() => void crea()}
-              className="rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
-            >
-              Crea il file dell'archivio
-            </button>
-            <button
-              onClick={() => setConfermaApertura(true)}
-              className="rounded-lg border border-cielo-300 px-4 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50"
-            >
-              Apri archivio esistente
-            </button>
-          </>
+        {stato.collegato && (
+          <button
+            onClick={() => void salvaOra()}
+            disabled={attesa}
+            className="rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600 disabled:opacity-50"
+          >
+            Salva ora
+          </button>
         )}
+        <button
+          onClick={() => void scegliPosizione()}
+          className="rounded-lg border border-cielo-300 px-4 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50"
+        >
+          Scegli la posizione dell'archivio
+        </button>
+        <button
+          onClick={() => setConfermaApertura(true)}
+          className="rounded-lg border border-cielo-300 px-4 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50"
+        >
+          {stato.collegato ? 'Apri un altro archivio' : 'Apri archivio esistente'}
+        </button>
       </div>
+
+      {chiediPosizione && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <p>
+            {stato.collegato ? (
+              <>
+                I dati sono stati scritti in <b>{posizione}</b>. Vuoi conservarli altrove?
+              </>
+            ) : (
+              <>
+                I dati sono nel browser ma <b>non sono ancora su un file</b>: scegli dove salvarli.
+              </>
+            )}
+          </p>
+          <div className="mt-3 flex gap-3">
+            <button
+              onClick={() => void scegliPosizione()}
+              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-700"
+            >
+              Scegli la posizione dell'archivio
+            </button>
+            <button
+              onClick={() => setChiediPosizione(false)}
+              className="rounded-lg px-4 py-2 text-sm text-amber-700 transition hover:bg-amber-100"
+            >
+              {stato.collegato ? 'Va bene così' : 'Più tardi'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {confermaApertura && (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
@@ -226,45 +300,189 @@ export default function ArchivioFilePannello() {
         )}
       </div>
 
-      {/* ---- nuovo archivio (azzera) ---- */}
+      {/* ---- copie di sicurezza ---- */}
       <div className="mt-6 border-t border-cielo-200 pt-4">
-        <h3 className="text-sm font-semibold text-cielo-800">Ricomincia da zero</h3>
+        <h3 className="text-sm font-semibold text-cielo-800">Copie di sicurezza</h3>
         <p className="mt-1 text-xs text-cielo-600">
-          Crea un archivio nuovo e vuoto, salvato in un nuovo file.
+          Ogni volta che premi «Salva ora» viene messa una copia datata nella cartella <b>backup</b>, accanto
+          all'archivio (ne restano le 30 più recenti). Da qui puoi tornare indietro a una di quelle copie.
         </p>
         <button
-          onClick={() => setConfermaNuovo(true)}
-          className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
+          onClick={() => void mostraCopie()}
+          disabled={attesa}
+          className="mt-3 rounded-lg border border-cielo-300 px-4 py-2 text-sm text-cielo-700 transition hover:bg-cielo-50 disabled:opacity-50"
         >
-          Crea un nuovo archivio
+          {attesa ? 'Attendere…' : 'Mostra le copie disponibili'}
         </button>
-        {confermaNuovo && (
-          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            <p>
-              <b>Tutti i dati attuali andranno persi</b> (immobili e preferenze). Gli <b>utenti vengono
-              mantenuti</b> e travasati nel nuovo archivio — altrimenti non potresti più entrare. Prima
-              dell'azzeramento viene scaricata automaticamente una copia di sicurezza dei dati.
-            </p>
-            <div className="mt-3 flex gap-3">
-              <button
-                onClick={() => void nuovoArchivio()}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
-              >
-                Ho capito, crea il nuovo archivio
-              </button>
-              <button
-                onClick={() => setConfermaNuovo(false)}
-                className="rounded-lg px-4 py-2 text-sm text-red-700 transition hover:bg-red-100"
-              >
-                Annulla
-              </button>
-            </div>
-          </div>
+        {copie && copie.length > 0 && (
+          <ul className="mt-3 divide-y divide-cielo-100 rounded-xl border border-cielo-200">
+            {copie.map((c) => (
+              <li key={c.nome} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span className="min-w-0">
+                  <span className="block truncate text-cielo-800">{c.nome}</span>
+                  <span className="block text-xs text-cielo-500">
+                    {new Date(c.data).toLocaleString('it-IT')} · {(c.dimensione / 1024).toFixed(1)} KB
+                  </span>
+                </span>
+                <button
+                  onClick={() => setCopiaScelta(c.nome)}
+                  className="shrink-0 rounded-lg border border-cielo-300 px-3 py-1.5 text-xs text-cielo-700 transition hover:bg-cielo-50"
+                >
+                  Ripristina
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
+      {/* ---- operazioni delicate ---- */}
+      <div className="mt-6 border-t border-cielo-200 pt-4">
+        <h3 className="text-sm font-semibold text-cielo-800">Operazioni delicate</h3>
+        <p className="mt-1 text-xs text-cielo-600">
+          Richiedono la digitazione di un codice di conferma: servono a non farle per sbaglio.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <button
+            onClick={() => setConfermaNuovo(true)}
+            className="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
+          >
+            Crea un nuovo archivio (azzera i dati)
+          </button>
+          {stato.collegato && (
+            <button
+              onClick={() => setConfermaCancella(true)}
+              className="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
+            >
+              Cancella archivio
+            </button>
+          )}
+        </div>
+      </div>
+
+      {confermaNuovo && (
+        <ConfermaCodice
+          titolo="Creare un nuovo archivio?"
+          azione="Crea il nuovo archivio"
+          onAnnulla={() => setConfermaNuovo(false)}
+          onConferma={() => void nuovoArchivio()}
+        >
+          <b>Tutti i dati attuali andranno persi</b> (immobili e preferenze). Gli <b>utenti vengono mantenuti</b>{' '}
+          e travasati nel nuovo archivio — altrimenti non potresti più entrare. Ti verrà chiesta la cartella
+          dove salvarlo, e prima di azzerare viene messa una copia di sicurezza nella cartella backup.
+        </ConfermaCodice>
+      )}
+
+      {confermaCancella && (
+        <ConfermaCodice
+          titolo="Cancellare l'archivio dal computer?"
+          azione="Cancella l'archivio"
+          onAnnulla={() => setConfermaCancella(false)}
+          onConferma={() => void cancella()}
+        >
+          Il file <b>{posizione}</b> viene eliminato dal computer. Prima della cancellazione ne viene messa una
+          copia nella cartella <b>backup</b>, che <b>non</b> viene toccata: da lì si può sempre ripristinare. I
+          dati restano visibili in questo browser finché non scegli una nuova posizione.
+        </ConfermaCodice>
+      )}
+
+      {copiaScelta && (
+        <ConfermaCodice
+          titolo="Ripristinare questa copia?"
+          azione="Ripristina la copia"
+          onAnnulla={() => setCopiaScelta(null)}
+          onConferma={() => void ripristina()}
+        >
+          I dati attuali verranno <b>sostituiti</b> con quelli di <b>{copiaScelta}</b>, utenti e password
+          compresi (se in quella copia il tuo account non c'era, dovrai rientrare con le credenziali di
+          allora). Lo stato di adesso viene comunque salvato in una nuova copia prima del ripristino.
+        </ConfermaCodice>
+      )}
+
       {messaggio && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{messaggio}</p>}
       {errore && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{errore}</p>}
+    </div>
+  )
+}
+
+/** Codice di 5 caratteri: lettere, numeri e simboli, senza quelli ambigui. */
+function generaCodice(): string {
+  const lettere = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+  const numeri = '23456789'
+  const simboli = '#@%&*?!$'
+  const tutti = lettere + numeri + simboli
+  const uno = (s: string) => s[Math.floor(Math.random() * s.length)]
+  const scelti = [uno(lettere), uno(numeri), uno(simboli), uno(tutti), uno(tutti)]
+  for (let i = scelti.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[scelti[i], scelti[j]] = [scelti[j], scelti[i]]
+  }
+  return scelti.join('')
+}
+
+/**
+ * Conferma "a prova di clic distratto": per procedere bisogna ricopiare un
+ * codice generato al momento.
+ */
+function ConfermaCodice({
+  titolo,
+  azione,
+  children,
+  onAnnulla,
+  onConferma,
+}: {
+  titolo: string
+  azione: string
+  children: ReactNode
+  onAnnulla: () => void
+  onConferma: () => void
+}) {
+  const [codice] = useState(generaCodice)
+  const [scritto, setScritto] = useState('')
+  const combacia = scritto.trim().toUpperCase() === codice
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-2xl border border-red-200 bg-panna p-6 shadow-lg">
+        <h3 className="text-lg font-semibold text-red-800">{titolo}</h3>
+        <p className="mt-2 text-sm leading-relaxed text-cielo-700">{children}</p>
+
+        <p className="mt-4 text-sm text-cielo-700">
+          Per procedere ricopia questo codice:{' '}
+          <span className="select-all rounded-lg bg-red-100 px-3 py-1 font-mono text-base font-bold tracking-[0.3em] text-red-800">
+            {codice}
+          </span>
+        </p>
+        <input
+          value={scritto}
+          onChange={(e) => setScritto(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && combacia) onConferma()
+            if (e.key === 'Escape') onAnnulla()
+          }}
+          autoFocus
+          spellCheck={false}
+          autoComplete="off"
+          placeholder="codice di conferma"
+          className="mt-2 w-full rounded-lg border border-cielo-300 px-3 py-2 font-mono text-base tracking-[0.2em] outline-none focus:border-cielo-500"
+        />
+
+        <div className="mt-4 flex justify-end gap-3">
+          <button
+            onClick={onAnnulla}
+            className="rounded-lg px-4 py-2 text-sm text-cielo-600 transition hover:bg-cielo-100"
+          >
+            Annulla
+          </button>
+          <button
+            onClick={onConferma}
+            disabled={!combacia}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {azione}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
