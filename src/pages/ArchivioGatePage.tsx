@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { scegliPosizioneArchivio, apriArchivioDaFile } from '../lib/dbBrowser'
+import { useToast } from '../hooks/useToast'
 
 const LOGO = './logo.svg'
 
@@ -10,6 +11,7 @@ const LOGO = './logo.svg'
  * in un file vero del computer.
  */
 export default function ArchivioGatePage({ onFine }: { onFine: () => void }) {
+  const toast = useToast()
   const [errore, setErrore] = useState<string | null>(null)
   const [avviso, setAvviso] = useState<string | null>(null)
   const [attesa, setAttesa] = useState<'crea' | 'apri' | null>(null)
@@ -21,9 +23,13 @@ export default function ArchivioGatePage({ onFine }: { onFine: () => void }) {
     const esito = await scegliPosizioneArchivio()
     setAttesa(null)
     if (!esito.ok) {
-      if (esito.messaggio) setErrore(esito.messaggio)
+      if (esito.messaggio) {
+        setErrore(esito.messaggio)
+        toast.errore(esito.messaggio)
+      }
       return
     }
+    toast.ok(esito.messaggio)
     onFine()
   }
 
@@ -34,13 +40,17 @@ export default function ArchivioGatePage({ onFine }: { onFine: () => void }) {
     const esito = await apriArchivioDaFile()
     setAttesa(null)
     if (!esito.ok) {
-      if (esito.messaggio) setErrore(esito.messaggio)
+      if (esito.messaggio) {
+        setErrore(esito.messaggio)
+        toast.errore(esito.messaggio)
+      }
       return
     }
     if (esito.soloDati) {
       // era un file di soli dati: gli immobili sono entrati, ma un archivio
       // vero e proprio ancora non c'è: si resta qui e si crea il file
-      setAvviso(`${esito.messaggio} Adesso premi «Crea un archivio nuovo»: finiranno tutti lì dentro.`)
+      setAvviso(`${esito.messaggio} Adesso premi «Scegli la posizione dell'archivio»: finiranno tutti lì dentro.`)
+      toast.ok(esito.messaggio)
       return
     }
     // l'archivio (utenti compresi) è stato sostituito: si riparte dal login

@@ -6,6 +6,7 @@ import { useImmobili } from '../hooks/useImmobili'
 import { usePreferenze } from '../hooks/usePreferenze'
 import { useMappa } from '../hooks/useMappa'
 import { regioneDaLocalizzazione } from '../lib/regioni'
+import { useToast } from '../hooks/useToast'
 import type { Immobile } from '../lib/tipi'
 
 const VUOTO = { asset: '', denominazione: '', portafoglio: '', localizzazione: '' }
@@ -25,6 +26,7 @@ export default function ImmobiliPage() {
   const { perPagina, impostaPerPagina } = usePreferenze()
   // apertura della mappa (riquadro nella pagina o scheda del browser)
   const { apri: apriMappa } = useMappa()
+  const toast = useToast()
 
   // elenco condiviso: le modifiche fatte qui si vedono subito anche altrove
   const { immobili, caricamento, inserisci, aggiorna, elimina } = useImmobili()
@@ -128,10 +130,14 @@ export default function ImmobiliPage() {
     })
     setSalvataggio(false)
     if (!esito.ok) {
-      setErrore(msgErrore({ code: esito.codice, message: esito.messaggio ?? '' }))
+      const messaggio = msgErrore({ code: esito.codice, message: esito.messaggio ?? '' })
+      setErrore(messaggio)
+      toast.errore(messaggio)
       return
     }
-    setOk(`Immobile "${form.denominazione.trim()}" salvato.`)
+    const conferma = `Immobile "${form.denominazione.trim()}" inserito.`
+    setOk(conferma)
+    toast.ok(conferma)
     setForm(VUOTO)
   }
 
@@ -173,9 +179,12 @@ export default function ImmobiliPage() {
     })
     setSalvataggioMod(false)
     if (!esito.ok) {
-      setEditErrore(msgErrore({ code: esito.codice, message: esito.messaggio ?? '' }))
+      const messaggio = msgErrore({ code: esito.codice, message: esito.messaggio ?? '' })
+      setEditErrore(messaggio)
+      toast.errore(messaggio)
       return
     }
+    toast.ok(`Immobile "${editForm.denominazione.trim()}" aggiornato.`)
     // se stavo modificando l'immobile selezionato, aggiorno l'etichetta in header
     if (selezionato && selezionato.id === editId) {
       seleziona({ id: editId, asset: editForm.asset.trim(), denominazione: editForm.denominazione.trim() })
@@ -191,9 +200,12 @@ export default function ImmobiliPage() {
     const esito = await elimina(eliminaTarget.id)
     setEliminando(false)
     if (!esito.ok) {
-      setEliminaErrore(`Errore nell'eliminazione: ${esito.messaggio}`)
+      const messaggio = `Eliminazione non riuscita: ${esito.messaggio}`
+      setEliminaErrore(messaggio)
+      toast.errore(messaggio)
       return
     }
+    toast.ok(`Immobile "${eliminaTarget.denominazione}" eliminato.`)
     if (selezionato && selezionato.id === eliminaTarget.id) seleziona(null)
     setEliminaTarget(null)
   }

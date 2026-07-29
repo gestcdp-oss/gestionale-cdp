@@ -13,6 +13,7 @@ import {
   cancellaArchivioFile,
 } from '../lib/dbBrowser'
 import type { StatoArchivioFile, VoceBackup } from '../lib/dbBrowser'
+import { useToast } from '../hooks/useToast'
 
 /**
  * Pannello "Archivio su file": l'archivio vive in una cartella scelta
@@ -21,6 +22,7 @@ import type { StatoArchivioFile, VoceBackup } from '../lib/dbBrowser'
  * copia e si cancella l'archivio. Solo versione browser.
  */
 export default function ArchivioFilePannello() {
+  const toast = useToast()
   const [stato, setStato] = useState<StatoArchivioFile | null>(null)
   const [messaggio, setMessaggio] = useState<string | null>(null)
   const [errore, setErrore] = useState<string | null>(null)
@@ -46,11 +48,23 @@ export default function ArchivioFilePannello() {
     setErrore(null)
   }
 
+  /** Ogni esito si vede due volte: nel riquadro e come avviso a comparsa. */
+  function mostraEsito(esito: { ok: boolean; messaggio: string }) {
+    if (!esito.messaggio) return // operazione annullata: non c'è niente da dire
+    ;(esito.ok ? setMessaggio : setErrore)(esito.messaggio)
+    ;(esito.ok ? toast.ok : toast.errore)(esito.messaggio)
+  }
+
+  function mostraAvvisoCopieVuote(testo: string) {
+    setErrore(testo)
+    toast.avviso(testo)
+  }
+
   async function scegliPosizione() {
     ripulisci()
     setChiediPosizione(false)
     const esito = await scegliPosizioneArchivio()
-    if (esito.messaggio) (esito.ok ? setMessaggio : setErrore)(esito.messaggio)
+    mostraEsito(esito)
     void aggiorna()
   }
 
@@ -59,11 +73,11 @@ export default function ArchivioFilePannello() {
     setConfermaApertura(false)
     const esito = await apriArchivioDaFile()
     if (!esito.ok) {
-      if (esito.messaggio) setErrore(esito.messaggio)
+      mostraEsito({ ok: false, messaggio: esito.messaggio })
       return
     }
     if (esito.soloDati) {
-      setMessaggio(esito.messaggio)
+      mostraEsito({ ok: true, messaggio: esito.messaggio })
       setChiediPosizione(true)
       void aggiorna()
       return
@@ -77,21 +91,21 @@ export default function ArchivioFilePannello() {
     setAttesa(true)
     const esito = await salvaArchivioOra()
     setAttesa(false)
-    ;(esito.ok ? setMessaggio : setErrore)(esito.messaggio)
+    mostraEsito(esito)
     void aggiorna()
   }
 
   async function esportaCopia() {
     ripulisci()
     const esito = await esportaCopiaArchivio()
-    ;(esito.ok ? setMessaggio : setErrore)(esito.messaggio)
+    mostraEsito(esito)
   }
 
   async function importaDati() {
     ripulisci()
     setConfermaImporta(false)
     const esito = await importaDatiDaArchivio()
-    if (esito.messaggio) (esito.ok ? setMessaggio : setErrore)(esito.messaggio)
+    mostraEsito(esito)
     if (esito.ok) setChiediPosizione(true)
     void aggiorna()
   }
@@ -100,7 +114,7 @@ export default function ArchivioFilePannello() {
     ripulisci()
     setConfermaNuovo(false)
     const esito = await creaNuovoArchivio()
-    if (esito.messaggio) (esito.ok ? setMessaggio : setErrore)(esito.messaggio)
+    mostraEsito(esito)
     void aggiorna()
   }
 
@@ -108,7 +122,7 @@ export default function ArchivioFilePannello() {
     ripulisci()
     setConfermaCancella(false)
     const esito = await cancellaArchivioFile()
-    if (esito.messaggio) (esito.ok ? setMessaggio : setErrore)(esito.messaggio)
+    mostraEsito(esito)
     setCopie(null)
     void aggiorna()
   }
@@ -120,7 +134,7 @@ export default function ArchivioFilePannello() {
     setAttesa(false)
     setCopie(elenco)
     if (elenco.length === 0) {
-      setErrore(
+      mostraAvvisoCopieVuote(
         stato?.cartella
           ? 'Nessuna copia di sicurezza ancora presente: usa «Salva ora» per crearne una.'
           : 'Per avere le copie di sicurezza imposta prima la posizione dell\'archivio.',
@@ -136,7 +150,7 @@ export default function ArchivioFilePannello() {
     setAttesa(true)
     const esito = await ripristinaDaBackup(nome)
     setAttesa(false)
-    if (esito.messaggio) (esito.ok ? setMessaggio : setErrore)(esito.messaggio)
+    mostraEsito(esito)
     void aggiorna()
   }
 

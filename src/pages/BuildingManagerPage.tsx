@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { dbLocale } from '../lib/db'
 import { useSelezione } from '../hooks/useSelezione'
+import { useToast } from '../hooks/useToast'
 import { useImmobili } from '../hooks/useImmobili'
 import { BIMESTRI, MESI_BREVI, STATI_AUTORIZZAZIONE, datiBMVuoti } from '../lib/tipi'
 import type { BimestreBM, DatiBM } from '../lib/tipi'
@@ -13,6 +14,7 @@ const ANNO_CORRENTE = new Date().getFullYear()
 export default function BuildingManagerPage() {
   const { immobile } = useSelezione()
   const { immobili } = useImmobili()
+  const toast = useToast()
   const dati = immobili.find((i) => i.id === immobile?.id) ?? null
 
   const [anno, setAnno] = useState(ANNO_CORRENTE)
@@ -89,6 +91,7 @@ export default function BuildingManagerPage() {
     daSalvare.current = false
     if (error) {
       setErrore(error.message)
+      toast.errore(`Incarico non salvato: ${error.message}`)
       setStato('fermo')
       return
     }

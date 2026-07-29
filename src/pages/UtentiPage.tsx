@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { dbLocale } from '../lib/db'
+import { useToast } from '../hooks/useToast'
 import type { Utente, AnteprimaImport } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
 import { usePreferenze } from '../hooks/usePreferenze'
@@ -18,6 +19,7 @@ const NUOVO = { nome: '', cognome: '', email: '', password: '', ripeti: '', ruol
 export default function UtentiPage() {
   const { utente, cambiaPassword, ricarica } = useAuth()
   const { modoMappa, impostaModoMappa } = usePreferenze()
+  const toast = useToast()
   const admin = utente?.ruolo === 'admin'
 
   // una sola voce aperta per volta
@@ -98,10 +100,13 @@ export default function UtentiPage() {
       email: profilo.email.trim(),
     })
     if (error) {
-      setProfErrore(error.code === '23505' ? 'Esiste già un utente con questa email.' : error.message)
+      const messaggio = error.code === '23505' ? 'Esiste già un utente con questa email.' : error.message
+      setProfErrore(messaggio)
+      toast.errore(messaggio)
       return
     }
     setProfOk('Dati aggiornati.')
+    toast.ok('Dati del profilo aggiornati.')
     await ricarica()
     void carica()
   }
@@ -117,10 +122,12 @@ export default function UtentiPage() {
     const esito = await cambiaPassword(pwd.vecchia, pwd.nuova)
     if (!esito.ok) {
       setPwdErrore(esito.messaggio ?? 'Cambio password non riuscito.')
+      toast.errore(esito.messaggio ?? 'Cambio password non riuscito.')
       return
     }
     setPwd({ vecchia: '', nuova: '', ripeti: '' })
     setPwdOk('Password aggiornata.')
+    toast.ok('Password aggiornata.')
     setApriPwd(false)
   }
 
@@ -141,10 +148,13 @@ export default function UtentiPage() {
       ruolo: nuovo.ruolo,
     })
     if (error) {
-      setNuovoErrore(error.code === '23505' ? 'Esiste già un utente con questa email.' : error.message)
+      const messaggio = error.code === '23505' ? 'Esiste già un utente con questa email.' : error.message
+      setNuovoErrore(messaggio)
+      toast.errore(messaggio)
       return
     }
     setNuovoOk(`Utente "${nuovo.email.trim()}" creato.`)
+    toast.ok(`Utente "${nuovo.email.trim()}" creato.`)
     setNuovo(NUOVO)
     void carica()
   }
@@ -156,9 +166,13 @@ export default function UtentiPage() {
     const { data, error } = await dbLocale.database.esporta()
     if (error) {
       setDbErrore(error.message)
+      toast.errore(error.message)
       return
     }
-    if (data) setDbMessaggio(`Esportati ${data.immobili} immobili in: ${data.percorso}`)
+    if (data) {
+      setDbMessaggio(`Esportati ${data.immobili} immobili in: ${data.percorso}`)
+      toast.ok(`Esportati ${data.immobili} immobili in ${data.percorso}`)
+    }
   }
 
   async function scegliFileImport() {
@@ -183,11 +197,13 @@ export default function UtentiPage() {
     setAnteprima(null)
     if (error) {
       setDbErrore(error.message)
+      toast.errore(error.message)
       return
     }
     setDbMessaggio(
       `Importati ${data?.immobili ?? 0} immobili. Il tuo accesso non è cambiato: continui con il tuo utente.`,
     )
+    toast.ok(`Importati ${data?.immobili ?? 0} immobili.`)
   }
 
   // ---- modifica altri utenti ----
@@ -207,9 +223,12 @@ export default function UtentiPage() {
       ruolo: editForm.ruolo,
     })
     if (error) {
-      setEditErrore(error.code === '23505' ? 'Esiste già un utente con questa email.' : error.message)
+      const messaggio = error.code === '23505' ? 'Esiste già un utente con questa email.' : error.message
+      setEditErrore(messaggio)
+      toast.errore(messaggio)
       return
     }
+    toast.ok(`Utente "${editForm.email.trim()}" aggiornato.`)
     setEditId(null)
     if (utente && utente.id === editId) await ricarica()
     void carica()
@@ -225,8 +244,10 @@ export default function UtentiPage() {
     const { error } = await dbLocale.utenti.resetPassword(resetTarget.id, resetPwd.nuova)
     if (error) {
       setResetErrore(error.message)
+      toast.errore(error.message)
       return
     }
+    toast.ok(`Password di "${resetTarget.email}" reimpostata.`)
     setResetTarget(null)
     setResetPwd({ nuova: '', ripeti: '' })
   }
@@ -237,8 +258,10 @@ export default function UtentiPage() {
     const { error } = await dbLocale.utenti.remove(eliminaTarget.id)
     if (error) {
       setEliminaErrore(error.message)
+      toast.errore(error.message)
       return
     }
+    toast.ok(`Utente "${eliminaTarget.email}" eliminato.`)
     setEliminaTarget(null)
     void carica()
   }

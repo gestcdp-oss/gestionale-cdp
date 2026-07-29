@@ -10,6 +10,7 @@ import { PreferenzeProvider } from './hooks/usePreferenze'
 import { SelezioneProvider } from './hooks/useSelezione'
 import { ImmobiliProvider } from './hooks/useImmobili'
 import { MappaProvider } from './hooks/useMappa'
+import { ToastProvider } from './hooks/useToast'
 import Layout from './components/Layout'
 import GestoreAggiornamenti from './components/GestoreAggiornamenti'
 import LoginPage from './pages/LoginPage'
@@ -23,13 +24,15 @@ export default function App() {
   // L'aggiornamento viene prima di tutto: login e dati arrivano dopo.
   return (
     <GestoreAggiornamenti>
-      <AuthProvider>
-        <PreferenzeProvider>
-          <SelezioneProvider>
-            <Contenuto />
-          </SelezioneProvider>
-        </PreferenzeProvider>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <PreferenzeProvider>
+            <SelezioneProvider>
+              <Contenuto />
+            </SelezioneProvider>
+          </PreferenzeProvider>
+        </AuthProvider>
+      </ToastProvider>
     </GestoreAggiornamenti>
   )
 }

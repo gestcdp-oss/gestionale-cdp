@@ -5,6 +5,7 @@ import { useSelezione } from '../hooks/useSelezione'
 import { useImmobili } from '../hooks/useImmobili'
 import { useMappa } from '../hooks/useMappa'
 import { regioneDaLocalizzazione } from '../lib/regioni'
+import { useToast } from '../hooks/useToast'
 import { GRUPPI_IMMOBILE } from '../lib/menu'
 import Icona from '../components/Icone'
 import type { NomeIcona } from '../components/Icone'
@@ -17,6 +18,7 @@ export default function SchedaImmobilePage() {
   const { immobile, seleziona } = useSelezione()
   const { immobili, aggiorna } = useImmobili()
   const { apri: apriMappa } = useMappa()
+  const toast = useToast()
   // i dati arrivano dalla fonte condivisa: ogni modifica si riflette ovunque
   const dati = immobili.find((i) => i.id === immobile?.id) ?? null
   const [modifica, setModifica] = useState(false)
@@ -80,8 +82,12 @@ export default function SchedaImmobilePage() {
   async function ricalcolaRegione() {
     if (!dati) return
     const nuova = regioneDaLocalizzazione(dati.localizzazione)
-    if (!nuova || nuova === regione) {
-      if (!nuova) setErrore('Da questo indirizzo non si ricava la regione: scrivila a mano.')
+    if (!nuova) {
+      toast.avviso('Da questo indirizzo non si ricava la regione: scrivila a mano.')
+      return
+    }
+    if (nuova === regione) {
+      toast.avviso(`La regione calcolata è la stessa: ${nuova}.`)
       return
     }
     setErrore(null)
@@ -94,7 +100,12 @@ export default function SchedaImmobilePage() {
       regione: nuova,
     })
     setSalvataggio(false)
-    if (!esito.ok) setErrore(esito.messaggio ?? 'Aggiornamento non riuscito.')
+    if (!esito.ok) {
+      setErrore(esito.messaggio ?? 'Aggiornamento non riuscito.')
+      toast.errore(esito.messaggio ?? 'Aggiornamento non riuscito.')
+      return
+    }
+    toast.ok(`Regione aggiornata: ${nuova}.`)
   }
 
   /** Cambia l'indirizzo: se la regione non è stata scritta a mano, la ripropone. */
@@ -125,13 +136,15 @@ export default function SchedaImmobilePage() {
     const esito = await aggiorna(dati.id, campi)
     setSalvataggio(false)
     if (!esito.ok) {
-      setErrore(
+      const messaggio =
         esito.codice === '23505'
           ? 'Esiste già un altro immobile con questo Asset o questa Denominazione.'
-          : (esito.messaggio ?? 'Salvataggio non riuscito.'),
-      )
+          : (esito.messaggio ?? 'Salvataggio non riuscito.')
+      setErrore(messaggio)
+      toast.errore(messaggio)
       return
     }
+    toast.ok('Scheda salvata.')
     // l'etichetta in alto segue il nuovo nome
     seleziona({ id: dati.id, asset: campi.asset, denominazione: campi.denominazione })
     setModifica(false)
