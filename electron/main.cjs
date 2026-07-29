@@ -137,6 +137,9 @@ function apriDb(nomeFile = 'travi.db') {
     );
     create unique index if not exists bm_immobile_anno_uidx on bm (immobile_id, anno);
   `)
+  // archivi nati prima della regione: la colonna si aggiunge senza toccare i dati
+  const colonne = db.prepare('pragma table_info(immobili)').all().map((c) => c.name)
+  if (!colonne.includes('regione')) db.exec('alter table immobili add column regione text')
   seminaSeServe()
 }
 
@@ -152,11 +155,11 @@ function seminaSeServe() {
     try {
       const lista = JSON.parse(fs.readFileSync(fileSeed, 'utf8'))
       const ins = db.prepare(
-        'insert or ignore into immobili (id, asset, denominazione, portafoglio, localizzazione) values (?, ?, ?, ?, ?)',
+        'insert or ignore into immobili (id, asset, denominazione, portafoglio, localizzazione, regione) values (?, ?, ?, ?, ?, ?)',
       )
       const tx = db.transaction((righe) => {
         for (const r of righe) {
-          ins.run(crypto.randomUUID(), r.asset, r.denominazione, r.portafoglio || null, r.localizzazione || null)
+          ins.run(crypto.randomUUID(), r.asset, r.denominazione, r.portafoglio || null, r.localizzazione || null, r.regione || null)
         }
       })
       tx(lista)
@@ -445,7 +448,9 @@ ipcMain.handle('pref:imposta', (_ev, { chiave, valore }) =>
 ipcMain.handle('immobili:list', () =>
   rispondi(() => {
     richiediSessione()
-    return db.prepare('select id, asset, denominazione, portafoglio, localizzazione, creato_il from immobili').all()
+    return db
+      .prepare('select id, asset, denominazione, portafoglio, localizzazione, regione, creato_il from immobili')
+      .all()
   }),
 )
 
@@ -456,8 +461,8 @@ ipcMain.handle('immobili:insert', (_ev, r) =>
     const den = pulisci(r.denominazione)
     if (!asset || !den) throw new Error('Asset e Denominazione sono obbligatori.')
     db.prepare(
-      'insert into immobili (id, asset, denominazione, portafoglio, localizzazione) values (?, ?, ?, ?, ?)',
-    ).run(crypto.randomUUID(), asset, den, pulisci(r.portafoglio), pulisci(r.localizzazione))
+      'insert into immobili (id, asset, denominazione, portafoglio, localizzazione, regione) values (?, ?, ?, ?, ?, ?)',
+    ).run(crypto.randomUUID(), asset, den, pulisci(r.portafoglio), pulisci(r.localizzazione), pulisci(r.regione))
     return null
   }),
 )
@@ -468,11 +473,16 @@ ipcMain.handle('immobili:update', (_ev, { id, campi }) =>
     const asset = pulisci(campi.asset)
     const den = pulisci(campi.denominazione)
     if (!asset || !den) throw new Error('Asset e Denominazione sono obbligatori.')
+    // chi non manda la regione (per esempio la modifica rapida nell'elenco)
+    // non deve cancellarla: si tiene quella che c'è
+    const attuale = db.prepare('select regione from immobili where id = ?').get(id)
+    const regione = campi.regione === undefined ? (attuale ? attuale.regione : null) : pulisci(campi.regione)
     db.prepare(
       `update immobili
-         set asset = ?, denominazione = ?, portafoglio = ?, localizzazione = ?, aggiornato_il = datetime('now')
+         set asset = ?, denominazione = ?, portafoglio = ?, localizzazione = ?, regione = ?,
+             aggiornato_il = datetime('now')
        where id = ?`,
-    ).run(asset, den, pulisci(campi.portafoglio), pulisci(campi.localizzazione), id)
+    ).run(asset, den, pulisci(campi.portafoglio), pulisci(campi.localizzazione), regione, id)
     return null
   }),
 )
@@ -793,7 +803,7 @@ ipcMain.handle('db:esporta', async () => {
     if (scelta.canceled || !scelta.filePath) return { data: null, error: null }
 
     const immobili = db
-      .prepare('select asset, denominazione, portafoglio, localizzazione from immobili order by asset')
+      .prepare('select asset, denominazione, portafoglio, localizzazione, regione from immobili order by asset')
       .all()
 
     const pacchetto = {
@@ -875,7 +885,7 @@ ipcMain.handle('db:applica-import', async (_ev, percorso) => {
     // sostituzione in un colpo solo: o riesce tutto, o non cambia nulla
     const svuota = db.prepare('delete from immobili')
     const inserisci = db.prepare(
-      'insert into immobili (id, asset, denominazione, portafoglio, localizzazione) values (?, ?, ?, ?, ?)',
+      'insert into immobili (id, asset, denominazione, portafoglio, localizzazione, regione) values (?, ?, ?, ?, ?, ?)',
     )
     const trasferisci = db.transaction((righe) => {
       svuota.run()
@@ -883,7 +893,7 @@ ipcMain.handle('db:applica-import', async (_ev, percorso) => {
         const asset = pulisci(r.asset)
         const den = pulisci(r.denominazione)
         if (!asset || !den) continue // riga incompleta: si salta
-        inserisci.run(crypto.randomUUID(), asset, den, pulisci(r.portafoglio), pulisci(r.localizzazione))
+        inserisci.run(crypto.randomUUID(), asset, den, pulisci(r.portafoglio), pulisci(r.localizzazione), pulisci(r.regione))
       }
     })
     trasferisci(pacchetto.immobili)

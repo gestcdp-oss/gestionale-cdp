@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { dbLocale } from '../lib/db'
 import { useSelezione } from '../hooks/useSelezione'
 import { useImmobili } from '../hooks/useImmobili'
-import { regioneDaLocalizzazione } from '../lib/regioni'
 import { BIMESTRI, MESI_BREVI, STATI_AUTORIZZAZIONE, datiBMVuoti } from '../lib/tipi'
 import type { BimestreBM, DatiBM } from '../lib/tipi'
 
@@ -110,7 +109,8 @@ export default function BuildingManagerPage() {
   const campiCorrenti = useRef(campi)
   campiCorrenti.current = campi
 
-  const regione = useMemo(() => regioneDaLocalizzazione(dati?.localizzazione), [dati?.localizzazione])
+  // la regione è quella salvata sull'immobile (modificabile dalla sua scheda)
+  const regione = dati?.regione?.trim() || null
   const totaleBimestri = campi.bimestri.reduce((s, b) => s + (b.importo ?? 0), 0)
   const reportConsegnati = campi.report.filter(Boolean).length
   const anniElenco = Array.from(new Set([ANNO_CORRENTE, ANNO_CORRENTE + 1, ANNO_CORRENTE - 1, ...anni])).sort(

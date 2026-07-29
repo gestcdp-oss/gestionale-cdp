@@ -8,6 +8,7 @@ export type ImmobileInput = {
   denominazione: string
   portafoglio: string | null
   localizzazione: string | null
+  regione?: string | null
 }
 
 export type Utente = {

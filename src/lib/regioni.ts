@@ -49,6 +49,72 @@ const PER_TRE_CIFRE: Record<string, string> = {
   '867': 'Abruzzo',
 }
 
+// sigla della provincia (spesso fra parentesi nell'indirizzo) → regione
+const PER_SIGLA: Record<string, string> = {
+  TO: 'Piemonte', VC: 'Piemonte', NO: 'Piemonte', CN: 'Piemonte', AT: 'Piemonte', AL: 'Piemonte',
+  BI: 'Piemonte', VB: 'Piemonte',
+  AO: "Valle d'Aosta",
+  VA: 'Lombardia', CO: 'Lombardia', SO: 'Lombardia', MI: 'Lombardia', BG: 'Lombardia', BS: 'Lombardia',
+  PV: 'Lombardia', CR: 'Lombardia', MN: 'Lombardia', LC: 'Lombardia', LO: 'Lombardia', MB: 'Lombardia',
+  BZ: 'Trentino-Alto Adige', TN: 'Trentino-Alto Adige',
+  VR: 'Veneto', VI: 'Veneto', BL: 'Veneto', TV: 'Veneto', VE: 'Veneto', PD: 'Veneto', RO: 'Veneto',
+  UD: 'Friuli-Venezia Giulia', GO: 'Friuli-Venezia Giulia', TS: 'Friuli-Venezia Giulia', PN: 'Friuli-Venezia Giulia',
+  IM: 'Liguria', SV: 'Liguria', GE: 'Liguria', SP: 'Liguria',
+  PC: 'Emilia-Romagna', PR: 'Emilia-Romagna', RE: 'Emilia-Romagna', MO: 'Emilia-Romagna', BO: 'Emilia-Romagna',
+  FE: 'Emilia-Romagna', RA: 'Emilia-Romagna', FC: 'Emilia-Romagna', RN: 'Emilia-Romagna',
+  MS: 'Toscana', LU: 'Toscana', PT: 'Toscana', FI: 'Toscana', LI: 'Toscana', PI: 'Toscana', AR: 'Toscana',
+  SI: 'Toscana', GR: 'Toscana', PO: 'Toscana',
+  PG: 'Umbria', TR: 'Umbria',
+  PU: 'Marche', AN: 'Marche', MC: 'Marche', AP: 'Marche', FM: 'Marche',
+  VT: 'Lazio', RI: 'Lazio', RM: 'Lazio', LT: 'Lazio', FR: 'Lazio',
+  AQ: 'Abruzzo', TE: 'Abruzzo', PE: 'Abruzzo', CH: 'Abruzzo',
+  CB: 'Molise', IS: 'Molise',
+  CE: 'Campania', BN: 'Campania', NA: 'Campania', AV: 'Campania', SA: 'Campania',
+  FG: 'Puglia', BA: 'Puglia', TA: 'Puglia', BR: 'Puglia', LE: 'Puglia', BT: 'Puglia',
+  PZ: 'Basilicata', MT: 'Basilicata',
+  CS: 'Calabria', CZ: 'Calabria', RC: 'Calabria', KR: 'Calabria', VV: 'Calabria',
+  TP: 'Sicilia', PA: 'Sicilia', ME: 'Sicilia', AG: 'Sicilia', CL: 'Sicilia', EN: 'Sicilia', CT: 'Sicilia',
+  RG: 'Sicilia', SR: 'Sicilia',
+  SS: 'Sardegna', NU: 'Sardegna', CA: 'Sardegna', OR: 'Sardegna', SU: 'Sardegna',
+}
+
+// capoluoghi di provincia: quando l'indirizzo non ha né CAP né sigla,
+// spesso il nome della città basta
+const CAPOLUOGHI: Record<string, string> = {
+  torino: 'Piemonte', vercelli: 'Piemonte', novara: 'Piemonte', cuneo: 'Piemonte', asti: 'Piemonte',
+  alessandria: 'Piemonte', biella: 'Piemonte', verbania: 'Piemonte',
+  aosta: "Valle d'Aosta",
+  varese: 'Lombardia', como: 'Lombardia', sondrio: 'Lombardia', milano: 'Lombardia', bergamo: 'Lombardia',
+  brescia: 'Lombardia', pavia: 'Lombardia', cremona: 'Lombardia', mantova: 'Lombardia', lecco: 'Lombardia',
+  lodi: 'Lombardia', monza: 'Lombardia',
+  bolzano: 'Trentino-Alto Adige', trento: 'Trentino-Alto Adige',
+  verona: 'Veneto', vicenza: 'Veneto', belluno: 'Veneto', treviso: 'Veneto', venezia: 'Veneto',
+  mestre: 'Veneto', marghera: 'Veneto', padova: 'Veneto', rovigo: 'Veneto',
+  udine: 'Friuli-Venezia Giulia', gorizia: 'Friuli-Venezia Giulia', trieste: 'Friuli-Venezia Giulia',
+  pordenone: 'Friuli-Venezia Giulia',
+  imperia: 'Liguria', savona: 'Liguria', genova: 'Liguria', 'la spezia': 'Liguria',
+  piacenza: 'Emilia-Romagna', parma: 'Emilia-Romagna', 'reggio emilia': 'Emilia-Romagna',
+  modena: 'Emilia-Romagna', bologna: 'Emilia-Romagna', ferrara: 'Emilia-Romagna', ravenna: 'Emilia-Romagna',
+  forli: 'Emilia-Romagna', cesena: 'Emilia-Romagna', rimini: 'Emilia-Romagna',
+  'massa': 'Toscana', carrara: 'Toscana', lucca: 'Toscana', pistoia: 'Toscana', firenze: 'Toscana',
+  livorno: 'Toscana', pisa: 'Toscana', arezzo: 'Toscana', siena: 'Toscana', grosseto: 'Toscana', prato: 'Toscana',
+  perugia: 'Umbria', terni: 'Umbria',
+  pesaro: 'Marche', urbino: 'Marche', ancona: 'Marche', macerata: 'Marche', 'ascoli piceno': 'Marche',
+  fermo: 'Marche',
+  viterbo: 'Lazio', rieti: 'Lazio', roma: 'Lazio', latina: 'Lazio', frosinone: 'Lazio',
+  "l'aquila": 'Abruzzo', teramo: 'Abruzzo', pescara: 'Abruzzo', chieti: 'Abruzzo',
+  campobasso: 'Molise', isernia: 'Molise',
+  caserta: 'Campania', benevento: 'Campania', napoli: 'Campania', avellino: 'Campania', salerno: 'Campania',
+  foggia: 'Puglia', bari: 'Puglia', taranto: 'Puglia', brindisi: 'Puglia', lecce: 'Puglia',
+  andria: 'Puglia', barletta: 'Puglia', trani: 'Puglia',
+  potenza: 'Basilicata', matera: 'Basilicata', ferrandina: 'Basilicata',
+  cosenza: 'Calabria', catanzaro: 'Calabria', 'reggio calabria': 'Calabria', crotone: 'Calabria',
+  'vibo valentia': 'Calabria',
+  trapani: 'Sicilia', palermo: 'Sicilia', messina: 'Sicilia', agrigento: 'Sicilia', caltanissetta: 'Sicilia',
+  enna: 'Sicilia', catania: 'Sicilia', ragusa: 'Sicilia', siracusa: 'Sicilia',
+  sassari: 'Sardegna', nuoro: 'Sardegna', cagliari: 'Sardegna', oristano: 'Sardegna',
+}
+
 /** Nomi di regione riconosciuti se scritti direttamente nella localizzazione. */
 const REGIONI = [
   'Abruzzo', 'Basilicata', 'Calabria', 'Campania', 'Emilia-Romagna', 'Friuli-Venezia Giulia',
@@ -56,9 +122,40 @@ const REGIONI = [
   'Sicilia', 'Toscana', 'Trentino-Alto Adige', 'Umbria', "Valle d'Aosta", 'Veneto',
 ]
 
+// parole che introducono il nome di una STRADA: "Via Torino" non vuol dire
+// che l'immobile sia a Torino
+const TOPONIMI = [
+  'via', 'v\\.', 'viale', 'v\\.le', 'piazza', 'p\\.zza', 'piazzale', 'corso', 'c\\.so', 'largo',
+  'vicolo', 'strada', 'stradone', 'lungomare', 'lungadige', 'salita', 'discesa', 'traversa', 'borgo',
+  'contrada', 'c\\.da', 'localita', 'località', 'frazione', 'fraz\\.', 'passeggiata', 'galleria', 'ponte',
+]
+
 /**
- * Regione dell'immobile ricavata dall'indirizzo: prima si cerca il CAP, poi il
- * nome della regione scritto per esteso. Restituisce null se non si capisce.
+ * Città citata come luogo dell'immobile: si scartano le occorrenze che fanno
+ * parte del nome di una via e, fra quelle rimaste, vince l'ultima — negli
+ * indirizzi italiani la città sta in fondo.
+ */
+function cittaNellIndirizzo(minuscolo: string): string | null {
+  const prima = new RegExp(`(?:${TOPONIMI.join('|')})\\s+$`)
+  let migliore: { nome: string; posizione: number } | null = null
+
+  for (const nome of Object.keys(CAPOLUOGHI)) {
+    const cerca = new RegExp(`(^|[^a-zàèéìòùü])${nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-zàèéìòùü]|$)`, 'g')
+    let trovato: RegExpExecArray | null
+    while ((trovato = cerca.exec(minuscolo)) !== null) {
+      const posizione = trovato.index + trovato[1].length
+      // se subito prima c'è "via", "piazza"… è il nome della strada: si salta
+      if (prima.test(minuscolo.slice(Math.max(0, posizione - 14), posizione))) continue
+      if (!migliore || posizione > migliore.posizione) migliore = { nome, posizione }
+    }
+  }
+  return migliore?.nome ?? null
+}
+
+/**
+ * Regione dell'immobile ricavata dall'indirizzo, senza uscire dal computer: si
+ * guardano in ordine il CAP, la sigla della provincia, il nome della regione e
+ * il nome della città. Restituisce null se l'indirizzo non basta a capirlo.
  */
 export function regioneDaLocalizzazione(localizzazione: string | null | undefined): string | null {
   const testo = String(localizzazione ?? '').trim()
@@ -74,9 +171,19 @@ export function regioneDaLocalizzazione(localizzazione: string | null | undefine
     if (perDue) return perDue
   }
 
+  // sigla della provincia fra parentesi: "… Campo Calabro (RC)"
+  const sigla = testo.match(/\(\s*([A-Za-z]{2})\s*\)/)
+  if (sigla) {
+    const perSigla = PER_SIGLA[sigla[1].toUpperCase()]
+    if (perSigla) return perSigla
+  }
+
   const minuscolo = testo.toLowerCase()
   const scritta = REGIONI.find((r) => minuscolo.includes(r.toLowerCase()))
   if (scritta) return scritta
+
+  const citta = cittaNellIndirizzo(minuscolo)
+  if (citta) return CAPOLUOGHI[citta]
   // forme abbreviate d'uso comune
   if (/\bfriuli\b/.test(minuscolo)) return 'Friuli-Venezia Giulia'
   if (/\btrentino\b|\balto adige\b|\bsüdtirol\b/.test(minuscolo)) return 'Trentino-Alto Adige'

@@ -4,6 +4,8 @@ export type Immobile = {
   denominazione: string
   portafoglio: string | null
   localizzazione: string | null
+  /** proposta dalla localizzazione, ma sempre correggibile a mano */
+  regione: string | null
   creato_il: string
 }
 

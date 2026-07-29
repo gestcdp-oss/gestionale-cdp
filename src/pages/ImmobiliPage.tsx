@@ -5,6 +5,7 @@ import { useSelezione } from '../hooks/useSelezione'
 import { useImmobili } from '../hooks/useImmobili'
 import { usePreferenze } from '../hooks/usePreferenze'
 import { useMappa } from '../hooks/useMappa'
+import { regioneDaLocalizzazione } from '../lib/regioni'
 import type { Immobile } from '../lib/tipi'
 
 const VUOTO = { asset: '', denominazione: '', portafoglio: '', localizzazione: '' }
@@ -116,11 +117,14 @@ export default function ImmobiliPage() {
       return
     }
     setSalvataggio(true)
+    const localizzazione = form.localizzazione.trim() || null
     const esito = await inserisci({
       asset: form.asset.trim(),
       denominazione: form.denominazione.trim(),
       portafoglio: form.portafoglio.trim() || null,
-      localizzazione: form.localizzazione.trim() || null,
+      localizzazione,
+      // la regione nasce dall'indirizzo; nella scheda si può correggere
+      regione: regioneDaLocalizzazione(localizzazione),
     })
     setSalvataggio(false)
     if (!esito.ok) {

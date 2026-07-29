@@ -13,6 +13,7 @@ import type {
 } from './db'
 import type { Immobile, IncaricoBM, DatiBM } from './tipi'
 import { BIMESTRI, bimestreVuoto, datiBMVuoti } from './tipi'
+import { regioneDaLocalizzazione } from './regioni'
 
 const ADMIN_PERMANENTE = 'marabelli.s@gmail.com'
 const FORMATO_ESPORTAZIONE = 'travi-dati-1'
@@ -616,12 +617,14 @@ async function sostituisciImmobili(righe: ImmobileInput[], bm?: BMEsportato[]): 
     if (!asset || !den) continue
     const id = crypto.randomUUID()
     idPerAsset.set(asset.toLowerCase(), id)
+    const localizzazione = pulisci(r.localizzazione)
     await metti('immobili', {
       id,
       asset,
       denominazione: den,
       portafoglio: pulisci(r.portafoglio),
-      localizzazione: pulisci(r.localizzazione),
+      localizzazione,
+      regione: pulisci(r.regione) ?? regioneDaLocalizzazione(localizzazione),
       creato_il: new Date().toISOString(),
     } satisfies Immobile)
     importati++
@@ -1304,12 +1307,15 @@ export function creaApiBrowser(): ApiTravi {
           ) {
             throw new Error('Asset o Denominazione già presenti.')
           }
+          const localizzazione = pulisci(r.localizzazione)
           await metti('immobili', {
             id: crypto.randomUUID(),
             asset,
             denominazione: den,
             portafoglio: pulisci(r.portafoglio),
-            localizzazione: pulisci(r.localizzazione),
+            localizzazione,
+            // se non la si scrive, la regione viene proposta dall'indirizzo
+            regione: pulisci(r.regione) ?? regioneDaLocalizzazione(localizzazione),
             creato_il: new Date().toISOString(),
           } satisfies Immobile)
           return null
@@ -1333,12 +1339,18 @@ export function creaApiBrowser(): ApiTravi {
           ) {
             throw new Error('Asset o Denominazione già presenti.')
           }
+          const localizzazione = pulisci(r.localizzazione)
           await metti('immobili', {
             ...attuale,
             asset,
             denominazione: den,
             portafoglio: pulisci(r.portafoglio),
-            localizzazione: pulisci(r.localizzazione),
+            localizzazione,
+            // la regione scritta a mano non viene mai ricalcolata da sola
+            regione:
+              r.regione !== undefined
+                ? pulisci(r.regione)
+                : (attuale.regione ?? regioneDaLocalizzazione(localizzazione)),
           })
           return null
         }),
@@ -1360,6 +1372,7 @@ export function creaApiBrowser(): ApiTravi {
               denominazione: i.denominazione,
               portafoglio: i.portafoglio,
               localizzazione: i.localizzazione,
+              regione: i.regione ?? null,
             }))
             .sort((a, b) => a.asset.localeCompare(b.asset, 'it', { numeric: true }))
           const nome = `TRAVI-dati-${new Date().toISOString().slice(0, 10)}.travidati`
@@ -1441,6 +1454,7 @@ export function creaApiBrowser(): ApiTravi {
                     denominazione: i.denominazione,
                     portafoglio: i.portafoglio,
                     localizzazione: i.localizzazione,
+                    regione: i.regione ?? null,
                   })),
                 },
                 null,

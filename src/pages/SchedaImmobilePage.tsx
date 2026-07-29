@@ -4,13 +4,14 @@ import { dbLocale } from '../lib/db'
 import { useSelezione } from '../hooks/useSelezione'
 import { useImmobili } from '../hooks/useImmobili'
 import { useMappa } from '../hooks/useMappa'
+import { regioneDaLocalizzazione } from '../lib/regioni'
 import { GRUPPI_IMMOBILE } from '../lib/menu'
 import Icona from '../components/Icone'
 import type { NomeIcona } from '../components/Icone'
 
 type Vista = 'mappa' | 'streetview'
 
-const VUOTO = { asset: '', denominazione: '', portafoglio: '', localizzazione: '' }
+const VUOTO = { asset: '', denominazione: '', portafoglio: '', localizzazione: '', regione: '' }
 
 export default function SchedaImmobilePage() {
   const { immobile, seleziona } = useSelezione()
@@ -27,6 +28,9 @@ export default function SchedaImmobilePage() {
   const [urlAnteprima, setUrlAnteprima] = useState<string | null>(null)
 
   const localizzazione = dati?.localizzazione?.trim() || ''
+  // la regione è un campo dell'immobile: viene proposta dall'indirizzo la prima
+  // volta, poi resta quella scritta a mano finché non si chiede di rifare il calcolo
+  const regione = dati?.regione?.trim() || ''
 
   // cambiando immobile si riparte sempre da Street View
   useEffect(() => {
@@ -67,8 +71,40 @@ export default function SchedaImmobilePage() {
       denominazione: dati.denominazione,
       portafoglio: dati.portafoglio ?? '',
       localizzazione: dati.localizzazione ?? '',
+      regione: dati.regione ?? '',
     })
     setModifica(true)
+  }
+
+  /** Il pulsantino accanto alla regione: la ricalcola dall'indirizzo e la salva. */
+  async function ricalcolaRegione() {
+    if (!dati) return
+    const nuova = regioneDaLocalizzazione(dati.localizzazione)
+    if (!nuova || nuova === regione) {
+      if (!nuova) setErrore('Da questo indirizzo non si ricava la regione: scrivila a mano.')
+      return
+    }
+    setErrore(null)
+    setSalvataggio(true)
+    const esito = await aggiorna(dati.id, {
+      asset: dati.asset,
+      denominazione: dati.denominazione,
+      portafoglio: dati.portafoglio,
+      localizzazione: dati.localizzazione,
+      regione: nuova,
+    })
+    setSalvataggio(false)
+    if (!esito.ok) setErrore(esito.messaggio ?? 'Aggiornamento non riuscito.')
+  }
+
+  /** Cambia l'indirizzo: se la regione non è stata scritta a mano, la ripropone. */
+  function cambiaLocalizzazione(v: string) {
+    setForm((f) => {
+      const dedottaPrima = regioneDaLocalizzazione(f.localizzazione) ?? ''
+      // la regione si aggiorna solo se era vuota o se era quella dedotta prima
+      const seguiIndirizzo = f.regione === '' || f.regione === dedottaPrima
+      return { ...f, localizzazione: v, regione: seguiIndirizzo ? (regioneDaLocalizzazione(v) ?? '') : f.regione }
+    })
   }
 
   async function salva() {
@@ -84,6 +120,7 @@ export default function SchedaImmobilePage() {
       denominazione: form.denominazione.trim(),
       portafoglio: form.portafoglio.trim() || null,
       localizzazione: form.localizzazione.trim() || null,
+      regione: form.regione.trim() || null,
     }
     const esito = await aggiorna(dati.id, campi)
     setSalvataggio(false)
@@ -163,7 +200,13 @@ export default function SchedaImmobilePage() {
                 <Campo
                   etichetta="Localizzazione"
                   valore={form.localizzazione}
-                  onCambia={(v) => setForm({ ...form, localizzazione: v })}
+                  onCambia={cambiaLocalizzazione}
+                />
+                <CampoRegione
+                  valore={form.regione}
+                  onCambia={(v) => setForm({ ...form, regione: v })}
+                  onRicalcola={() => setForm({ ...form, regione: regioneDaLocalizzazione(form.localizzazione) ?? '' })}
+                  ricalcolabile={Boolean(form.localizzazione.trim())}
                 />
               </>
             ) : (
@@ -172,6 +215,22 @@ export default function SchedaImmobilePage() {
                 <Dato etichetta="Portafoglio" valore={dati?.portafoglio ?? ''} />
                 <Dato etichetta="Denominazione" valore={dati?.denominazione ?? immobile.denominazione} />
                 <Dato etichetta="Localizzazione" valore={localizzazione} />
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-cielo-500">Regione</dt>
+                  <dd className="mt-1 flex items-center gap-2 text-cielo-800">
+                    {regione || '—'}
+                    {localizzazione && (
+                      <button
+                        onClick={() => void ricalcolaRegione()}
+                        disabled={salvataggio}
+                        title="Ricalcola la regione dalla localizzazione"
+                        className="flex h-6 w-6 items-center justify-center rounded-full border border-cielo-300 text-cielo-500 transition hover:bg-cielo-100 hover:text-cielo-700 disabled:opacity-40"
+                      >
+                        <IconaBersaglio />
+                      </button>
+                    )}
+                  </dd>
+                </div>
               </>
             )}
           </dl>
@@ -260,6 +319,53 @@ function Campo({
   )
 }
 
+/** Campo Regione in modifica: testo libero più il pulsantino di ricalcolo. */
+function CampoRegione({
+  valore,
+  onCambia,
+  onRicalcola,
+  ricalcolabile,
+}: {
+  valore: string
+  onCambia: (v: string) => void
+  onRicalcola: () => void
+  ricalcolabile: boolean
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-semibold uppercase tracking-wide text-cielo-500">Regione</span>
+      <span className="mt-1 flex items-center gap-1.5">
+        <input
+          value={valore}
+          onChange={(e) => onCambia(e.target.value)}
+          placeholder="proposta dall'indirizzo"
+          className="w-full rounded-lg border border-cielo-300 bg-white px-3 py-1.5 text-sm text-cielo-800 outline-none transition focus:border-cielo-400 focus:ring-2 focus:ring-cielo-100"
+        />
+        {ricalcolabile && (
+          <button
+            type="button"
+            onClick={onRicalcola}
+            title="Ricalcola la regione dalla localizzazione"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-cielo-300 text-cielo-500 transition hover:bg-cielo-100 hover:text-cielo-700"
+          >
+            <IconaBersaglio />
+          </button>
+        )}
+      </span>
+    </label>
+  )
+}
+
+function IconaBersaglio() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+    </svg>
+  )
+}
+
 function IconaMatita() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -269,11 +375,24 @@ function IconaMatita() {
   )
 }
 
-function Dato({ etichetta, valore, mono }: { etichetta: string; valore: string; mono?: boolean }) {
+function Dato({
+  etichetta,
+  valore,
+  mono,
+  nota,
+}: {
+  etichetta: string
+  valore: string
+  mono?: boolean
+  nota?: string
+}) {
   return (
     <div>
       <dt className="text-xs font-semibold uppercase tracking-wide text-cielo-500">{etichetta}</dt>
-      <dd className={`mt-1 text-cielo-800 ${mono ? 'font-mono' : ''}`}>{valore || '—'}</dd>
+      <dd className={`mt-1 text-cielo-800 ${mono ? 'font-mono' : ''}`}>
+        {valore || '—'}
+        {nota && <span className="ml-2 text-xs font-normal text-cielo-400">({nota})</span>}
+      </dd>
     </div>
   )
 }
