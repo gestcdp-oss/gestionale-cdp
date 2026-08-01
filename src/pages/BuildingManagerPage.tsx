@@ -208,14 +208,23 @@ export default function BuildingManagerPage() {
   async function registraAllegati(scelti: FileAnalizzato[]) {
     setCaricaAllegati(false)
     setStato('in-corso')
-    const primo = Number((campi.periodo_dal ?? '').slice(0, 4)) || anno
-    const ultimo = Number((campi.periodo_al ?? '').slice(0, 4)) || primo
-    const anni: number[] = []
-    for (let a = primo; a <= Math.min(ultimo, primo + 9); a++) anni.push(a)
 
     let registrati = 0
     for (const scelto of scelti) {
       if (!scelto.immobile) continue
+      // gli anni sono quelli della lettera DI QUELL'IMMOBILE: l'allegato vive
+      // insieme alla sua lettera, non a quella della pagina che sto guardando
+      const annoScheda = Number((scelto.scheda?.dal ?? '').slice(0, 4)) || anno
+      const { data: riferimento } = await dbLocale.bm.get(scelto.immobile.id, annoScheda)
+      if (!riferimento?.lettera) {
+        toast.errore(`"${scelto.file.name}": ${scelto.immobile.denominazione} non ha una lettera per il ${annoScheda}.`)
+        continue
+      }
+      const primo = Number((riferimento.periodo_dal ?? '').slice(0, 4)) || annoScheda
+      const ultimo = Number((riferimento.periodo_al ?? '').slice(0, 4)) || primo
+      const anni: number[] = []
+      for (let a = primo; a <= Math.min(ultimo, primo + 9); a++) anni.push(a)
+
       const { data: documentoId, error } = await dbLocale.documenti.salva({
         nome: scelto.file.name,
         tipo: scelto.file.type || 'application/pdf',
@@ -599,11 +608,18 @@ export default function BuildingManagerPage() {
       {caricaAllegati && (
         <CaricaAllegati
           immobili={immobili}
-          atteso={{
-            fornitore: campi.fornitore,
-            dal: campi.periodo_dal,
-            al: campi.periodo_al,
-            categoria: campi.categoria,
+          annoCorrente={anno}
+          leggiIncarico={async (id, a) => {
+            const { data } = await dbLocale.bm.get(id, a)
+            if (!data?.lettera) return null
+            return {
+              fornitore: data.fornitore,
+              dal: data.periodo_dal,
+              al: data.periodo_al,
+              categoria: data.categoria,
+              accordoNome: data.lettera.accordoNome,
+              nomeLettera: data.lettera.nomeFile,
+            }
           }}
           onAnnulla={() => setCaricaAllegati(false)}
           onFatto={(scelti) => void registraAllegati(scelti)}

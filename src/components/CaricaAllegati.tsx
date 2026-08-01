@@ -24,15 +24,27 @@ export type FileAnalizzato = {
   avvisoCommittente: string | null
 }
 
+/** L'incarico di un immobile per un certo anno, con la sua lettera. */
+export type IncaricoDiRiferimento = {
+  fornitore: string | null
+  dal: string | null
+  al: string | null
+  categoria: string | null
+  accordoNome: string | null
+  nomeLettera: string | null
+} | null
+
 export default function CaricaAllegati({
   immobili,
-  atteso,
+  annoCorrente,
+  leggiIncarico,
   onFatto,
   onAnnulla,
 }: {
   immobili: Immobile[]
-  /** i dati dell'incarico che arrivano dalla lettera già caricata */
-  atteso: { fornitore: string | null; dal: string | null; al: string | null; categoria: string | null }
+  annoCorrente: number
+  /** legge la lettera registrata per quell'immobile in quell'anno */
+  leggiIncarico: (immobileId: string, anno: number) => Promise<IncaricoDiRiferimento>
   onFatto: (scelti: FileAnalizzato[]) => void
   onAnnulla: () => void
 }) {
@@ -45,25 +57,23 @@ export default function CaricaAllegati({
     setQuanti({ fatti: 0, totale: files.length })
     const esiti: FileAnalizzato[] = []
     for (const file of files) {
-      esiti.push(await analizzaUno(file, immobili, atteso))
+      esiti.push(await analizzaUno(file, immobili, annoCorrente, leggiIncarico))
       setQuanti((q) => ({ ...q, fatti: q.fatti + 1 }))
     }
     setAnalizzati(esiti)
     setPasso('riepilogo')
   }
 
-  function cambiaImmobile(indice: number, immobile: Immobile | null) {
-    setAnalizzati((elenco) =>
-      elenco.map((e, i) =>
-        i === indice
-          ? {
-              ...e,
-              immobile,
-              bloccante: immobile ? (e.bloccante === BLOCCO_IMMOBILE ? null : e.bloccante) : BLOCCO_IMMOBILE,
-              avvisoCommittente: avvisoCommittente(e.scheda, immobile),
-            }
-          : e,
-      ),
+  async function cambiaImmobile(indice: number, immobile: Immobile | null) {
+    const voce = analizzati[indice]
+    if (!immobile) {
+      setAnalizzati((e) => e.map((x, i) => (i === indice ? { ...x, immobile: null, bloccante: BLOCCO_IMMOBILE } : x)))
+      return
+    }
+    // cambiando immobile cambia anche la lettera con cui confrontare
+    const verifica = await verificaControLettera(voce.scheda, immobile, annoCorrente, leggiIncarico)
+    setAnalizzati((e) =>
+      e.map((x, i) => (i === indice ? { ...x, immobile, ...verifica } : x)),
     )
   }
 
@@ -79,7 +89,8 @@ export default function CaricaAllegati({
             <p className="mt-2 text-sm leading-relaxed text-cielo-700">
               Puoi sceglierne <b>più d'uno insieme</b>. Gli allegati devono essere in <b>formato PDF</b> per
               poter essere letti: da ognuno il programma ricava sito, lotto, committente, classe, appaltatore e
-              durata, e controlla che siano gli stessi dell'incarico già registrato.
+              durata, e controlla che combacino con la <b>Lettera di attivazione di quell'immobile</b>. Un
+              allegato senza la sua lettera non si può registrare.
             </p>
             <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-cielo-300 bg-cielo-50 p-8 text-center transition hover:border-cielo-400 hover:bg-cielo-100">
               <span className="text-3xl">📎</span>
@@ -161,7 +172,7 @@ export default function CaricaAllegati({
                         <select
                           value={a.immobile?.id ?? ''}
                           onChange={(e) =>
-                            cambiaImmobile(i, immobili.find((im) => im.id === e.target.value) ?? null)
+                            void cambiaImmobile(i, immobili.find((im) => im.id === e.target.value) ?? null)
                           }
                           className="min-w-0 flex-1 rounded border border-cielo-300 bg-white px-2 py-1 text-sm text-cielo-800 outline-none focus:border-cielo-400"
                         >
@@ -182,7 +193,7 @@ export default function CaricaAllegati({
 
                   {a.incoerenze.length > 0 && (
                     <div className="mt-3 rounded-lg border border-amber-300 bg-amber-100 p-3 text-sm text-amber-900">
-                      <b>Attenzione: questi dati non corrispondono all'incarico della lettera.</b>
+                      <b>Attenzione: questi dati non corrispondono alla lettera di questo immobile.</b>
                       <ul className="mt-1 list-disc pl-5">
                         {a.incoerenze.map((p) => (
                           <li key={p.campo}>
@@ -228,10 +239,47 @@ export default function CaricaAllegati({
 
 const BLOCCO_IMMOBILE = "Non si capisce a quale immobile si riferisce: scegli tu l'immobile qui sopra."
 
+/**
+ * Un allegato vive solo grazie alla sua lettera: qui si controlla che
+ * l'immobile riconosciuto abbia davvero una Lettera di attivazione per quel
+ * periodo e che i dati della scheda siano gli stessi di quella lettera.
+ */
+async function verificaControLettera(
+  scheda: DatiScheda | null,
+  immobile: Immobile,
+  annoCorrente: number,
+  leggiIncarico: (immobileId: string, anno: number) => Promise<IncaricoDiRiferimento>,
+): Promise<{ bloccante: string | null; incoerenze: Incoerenza[]; avvisoCommittente: string | null }> {
+  const anno = Number((scheda?.dal ?? '').slice(0, 4)) || annoCorrente
+  const incarico = await leggiIncarico(immobile.id, anno)
+  if (!incarico) {
+    return {
+      bloccante:
+        `${immobile.asset} · ${immobile.denominazione} non ha una Lettera di attivazione per il ${anno}: ` +
+        'gli allegati vivono solo insieme alla loro lettera, quindi va caricata prima quella.',
+      incoerenze: [],
+      avvisoCommittente: null,
+    }
+  }
+  return {
+    bloccante: null,
+    incoerenze: scheda
+      ? confrontaConIncarico(scheda, {
+          fornitore: incarico.fornitore,
+          dal: incarico.dal,
+          al: incarico.al,
+          categoria: incarico.categoria,
+        })
+      : [],
+    avvisoCommittente: avvisoCommittente(scheda, immobile),
+  }
+}
+
 async function analizzaUno(
   file: File,
   immobili: Immobile[],
-  atteso: { fornitore: string | null; dal: string | null; al: string | null; categoria: string | null },
+  annoCorrente: number,
+  leggiIncarico: (immobileId: string, anno: number) => Promise<IncaricoDiRiferimento>,
 ): Promise<FileAnalizzato> {
   const vuoto: FileAnalizzato = {
     file,
@@ -276,19 +324,12 @@ async function analizzaUno(
     if (candidati.length && candidati[0].punteggio >= 0.5) immobile = candidati[0].immobile
   }
 
-  return {
-    file,
-    scheda,
-    immobile,
-    bloccante: immobile ? null : BLOCCO_IMMOBILE,
-    incoerenze: confrontaConIncarico(scheda, {
-      fornitore: atteso.fornitore,
-      dal: atteso.dal,
-      al: atteso.al,
-      categoria: atteso.categoria,
-    }),
-    avvisoCommittente: avvisoCommittente(scheda, immobile),
+  if (!immobile) {
+    return { ...vuoto, scheda, bloccante: BLOCCO_IMMOBILE }
   }
+  // il confronto si fa con la lettera di QUELL'immobile, non con quella aperta
+  const verifica = await verificaControLettera(scheda, immobile, annoCorrente, leggiIncarico)
+  return { file, scheda, immobile, ...verifica }
 }
 
 function avvisoCommittente(scheda: DatiScheda | null, immobile: Immobile | null): string | null {
