@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { testoDaPdf } from '../lib/pdf'
+import { testoDaDocumento } from '../lib/documenti'
 import { cercaCorrispondenze, leggiLettera } from '../lib/letteraAttivazione'
 import type { Candidato, DatiLettera } from '../lib/letteraAttivazione'
 import type { Immobile } from '../lib/tipi'
@@ -43,13 +43,10 @@ export default function CaricaLettera({
     setPasso('lettura')
     setNomeFile(file.name)
     try {
-      if (!/\.pdf$/i.test(file.name)) {
-        throw new Error('Per ora si leggono solo i PDF: se hai un documento Word, salvalo prima in PDF.')
-      }
-      const testo = await testoDaPdf(file)
+      const testo = await testoDaDocumento(file)
       if (testo.replace(/\s/g, '').length < 200) {
         throw new Error(
-          'Da questo PDF non si riesce a leggere il testo: probabilmente è la scansione di un foglio. Serve il PDF originale.',
+          "Da questo file non si riesce a leggere il testo: se è un PDF, probabilmente è la scansione di un foglio e serve l'originale.",
         )
       }
       const esito = leggiLettera(testo)
@@ -104,18 +101,19 @@ export default function CaricaLettera({
           <div>
             <h3 className="text-lg font-semibold text-cielo-800">Carica la Lettera di attivazione</h3>
             <p className="mt-2 text-sm leading-relaxed text-cielo-700">
-              Scegli il PDF della lettera: il programma ne legge fornitore, accordo quadro, Building Manager,
-              importo e durata. Il file resta sul tuo computer, non viene inviato da nessuna parte.
+              Scegli la lettera in <b>PDF</b> o in <b>Word</b>: il programma ne legge fornitore, accordo quadro,
+              Building Manager, importo e durata. Il file resta sul tuo computer, non viene inviato da nessuna
+              parte.
             </p>
             <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-cielo-300 bg-cielo-50 p-8 text-center transition hover:border-cielo-400 hover:bg-cielo-100">
               <span className="text-3xl">📄</span>
-              <span className="mt-2 font-medium text-cielo-800">Scegli il file PDF</span>
+              <span className="mt-2 font-medium text-cielo-800">Scegli il file (PDF o Word)</span>
               <span className="mt-1 text-xs text-cielo-600">
                 {nomeFile ? `Lettura di ${nomeFile}…` : 'oppure trascinalo qui'}
               </span>
               <input
                 type="file"
-                accept="application/pdf,.pdf"
+                accept="application/pdf,.pdf,.docx"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0]
