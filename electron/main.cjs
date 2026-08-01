@@ -137,6 +137,16 @@ function apriDb(nomeFile = 'travi.db') {
       aggiornato_il text not null default (datetime('now'))
     );
     create unique index if not exists bm_immobile_anno_uidx on bm (immobile_id, anno);
+
+    -- documenti caricati (lettere di attivazione e loro allegati)
+    create table if not exists documenti (
+      id          text primary key,
+      nome        text not null,
+      tipo        text,
+      dimensione  integer,
+      caricato_il text not null default (datetime('now')),
+      contenuto   text not null
+    );
   `)
   // archivi nati prima della regione: la colonna si aggiunge senza toccare i dati
   const colonne = db.prepare('pragma table_info(immobili)').all().map((c) => c.name)
@@ -628,6 +638,49 @@ ipcMain.handle('bm:anni', (_ev, immobileId) =>
       .prepare('select anno from bm where immobile_id = ? order by anno desc')
       .all(immobileId)
       .map((r) => Number(r.anno))
+  }),
+)
+
+// ---------- IPC: documenti caricati ----------
+ipcMain.handle('documenti:salva', (_ev, d) =>
+  rispondi(() => {
+    richiediSessione()
+    const id = crypto.randomUUID()
+    db.prepare(
+      'insert into documenti (id, nome, tipo, dimensione, contenuto) values (?, ?, ?, ?, ?)',
+    ).run(id, String(d.nome || 'documento'), String(d.tipo || ''), Number(d.dimensione) || 0, String(d.contenuto || ''))
+    return id
+  }),
+)
+
+ipcMain.handle('documenti:apri', (_ev, id) =>
+  rispondi(() => {
+    richiediSessione()
+    return db.prepare('select * from documenti where id = ?').get(id) || null
+  }),
+)
+
+ipcMain.handle('documenti:pulisci', () =>
+  rispondi(() => {
+    richiediSessione()
+    // restano solo i file ancora richiamati da qualche incarico
+    const usati = new Set()
+    for (const r of db.prepare("select lettera_json from bm where lettera_json is not null").all()) {
+      try {
+        const l = JSON.parse(r.lettera_json)
+        if (l && l.documentoId) usati.add(l.documentoId)
+        for (const a of (l && l.allegati) || []) if (a && a.documentoId) usati.add(a.documentoId)
+      } catch {
+        /* lettera illeggibile: si ignora */
+      }
+    }
+    const tolti = db
+      .prepare('select id from documenti')
+      .all()
+      .filter((d) => !usati.has(d.id))
+    const cancella = db.prepare('delete from documenti where id = ?')
+    for (const d of tolti) cancella.run(d.id)
+    return tolti.length
   }),
 )
 

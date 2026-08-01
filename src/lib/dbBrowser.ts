@@ -11,7 +11,7 @@ import type {
   AnteprimaImport,
   StatoAggiornamento,
 } from './db'
-import type { Immobile, IncaricoBM, DatiBM } from './tipi'
+import type { Immobile, IncaricoBM, DatiBM, Documento, AllegatoBM } from './tipi'
 import { BIMESTRI, bimestreVuoto, datiBMVuoti } from './tipi'
 import { regioneDaLocalizzazione } from './regioni'
 
@@ -59,8 +59,8 @@ const NOME_DB = 'travi'
 
 function apriIdb(): Promise<IDBDatabase> {
   return new Promise((risolvi, rifiuta) => {
-    // versione 2: si aggiunge l'archivio degli incarichi di Building Management
-    const ric = indexedDB.open(NOME_DB, 2)
+    // versione 3: incarichi di Building Management e documenti caricati
+    const ric = indexedDB.open(NOME_DB, 3)
     ric.onupgradeneeded = () => {
       const db = ric.result
       if (!db.objectStoreNames.contains('utenti')) db.createObjectStore('utenti', { keyPath: 'id' })
@@ -68,6 +68,7 @@ function apriIdb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('preferenze')) db.createObjectStore('preferenze', { keyPath: 'k' })
       if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'k' })
       if (!db.objectStoreNames.contains('bm')) db.createObjectStore('bm', { keyPath: 'id' })
+      if (!db.objectStoreNames.contains('documenti')) db.createObjectStore('documenti', { keyPath: 'id' })
     }
     ric.onsuccess = () => risolvi(ric.result)
     ric.onerror = () => rifiuta(ric.error ?? new Error('Archivio locale non disponibile.'))
@@ -180,11 +181,12 @@ function marcaTemporale(): string {
 }
 
 async function generaDump(): Promise<{ testo: string; salvatoIl: string }> {
-  const [utenti, immobili, preferenze, bm] = await Promise.all([
+  const [utenti, immobili, preferenze, bm, documenti] = await Promise.all([
     tutti<UtenteArchivio>('utenti'),
     tutti<Immobile>('immobili'),
     tutti<{ k: string; v: string }>('preferenze'),
     tutti<IncaricoBM>('bm'),
+    tutti<Documento>('documenti'),
   ])
   const salvatoIl = new Date().toISOString()
   return {
@@ -198,6 +200,7 @@ async function generaDump(): Promise<{ testo: string; salvatoIl: string }> {
         immobili,
         preferenze,
         bm,
+        documenti,
       },
       null,
       1,
@@ -249,6 +252,7 @@ async function sincronizzaDaFile(conRichiesta: boolean): Promise<'importato' | '
       immobili?: Immobile[]
       preferenze?: { k: string; v: string }[]
       bm?: IncaricoBM[]
+      documenti?: Documento[]
     }
     try {
       dump = JSON.parse(testo)
@@ -267,10 +271,12 @@ async function sincronizzaDaFile(conRichiesta: boolean): Promise<'importato' | '
       await svuota('immobili')
       await svuota('preferenze')
       await svuota('bm')
+      await svuota('documenti')
       for (const u of dump.utenti) await metti('utenti', u)
       for (const i of dump.immobili ?? []) await metti('immobili', i)
       for (const p of dump.preferenze ?? []) await metti('preferenze', p)
       for (const b of dump.bm ?? []) await metti('bm', b)
+      for (const d of dump.documenti ?? []) await metti('documenti', d)
       await metti('meta', { k: 'ultimoSalvataggioFile', v: marcaFile })
     } finally {
       inSincronizzazione = false
@@ -490,6 +496,7 @@ export async function ripristinaDaBackup(nome: string): Promise<{ ok: boolean; m
       immobili?: Immobile[]
       preferenze?: { k: string; v: string }[]
       bm?: IncaricoBM[]
+      documenti?: Documento[]
     }
     if (dump.formato !== FORMATO_ARCHIVIO || !Array.isArray(dump.utenti)) {
       return { ok: false, messaggio: 'Questa copia non è leggibile.' }
@@ -503,10 +510,12 @@ export async function ripristinaDaBackup(nome: string): Promise<{ ok: boolean; m
       await svuota('immobili')
       await svuota('preferenze')
       await svuota('bm')
+      await svuota('documenti')
       for (const u of dump.utenti) await metti('utenti', u)
       for (const i of dump.immobili ?? []) await metti('immobili', i)
       for (const p of dump.preferenze ?? []) await metti('preferenze', p)
       for (const b of dump.bm ?? []) await metti('bm', b)
+      for (const d of dump.documenti ?? []) await metti('documenti', d)
     } finally {
       inSincronizzazione = false
     }
@@ -683,6 +692,7 @@ export async function apriArchivioDaFile(): Promise<{
       // negli archivi completi gli incarichi hanno l'id dell'immobile,
       // nei file di soli dati hanno il numero asset
       bm?: unknown[]
+      documenti?: unknown[]
     }
     try {
       dump = JSON.parse(testo)
@@ -716,6 +726,7 @@ export async function apriArchivioDaFile(): Promise<{
       for (const i of dump.immobili ?? []) await metti('immobili', i)
       for (const p of dump.preferenze ?? []) await metti('preferenze', p)
       for (const b of (dump.bm ?? []) as IncaricoBM[]) await metti('bm', b)
+      for (const d of (dump.documenti ?? []) as Documento[]) await metti('documenti', d)
       await metti('meta', { k: 'fileArchivio', h: handle })
       await metti('meta', {
         k: 'ultimoSalvataggioFile',
@@ -770,6 +781,7 @@ export async function creaNuovoArchivio(): Promise<{ ok: boolean; messaggio: str
       await svuota('immobili')
       await svuota('preferenze')
       await svuota('bm')
+      await svuota('documenti')
       await metti('meta', { k: 'fileArchivio', h: file })
     } finally {
       inSincronizzazione = false
@@ -1030,6 +1042,8 @@ function normalizzaBM(campi: Partial<DatiBM>): DatiBM {
           codiceFiscaleBM: pulisci(l.codiceFiscaleBM),
           importo: numeroOppureNulla(l.importo),
           compendi: Array.isArray(l.compendi) ? l.compendi.map((c) => String(c)) : [],
+          documentoId: pulisci(l.documentoId),
+          allegati: Array.isArray(l.allegati) ? (l.allegati as AllegatoBM[]) : [],
         }
       : null,
     fornitore: pulisci(campi.fornitore),
@@ -1532,6 +1546,48 @@ export function creaApiBrowser(): ApiTravi {
           const esistente = righe.find((r) => r.immobile_id === immobileId && Number(r.anno) === Number(anno))
           if (esistente) await togli('bm', esistente.id)
           return null
+        }),
+    },
+
+    documenti: {
+      salva: (d: { nome: string; tipo: string; contenuto: string; dimensione: number }) =>
+        rispondi(async () => {
+          await richiediSessione()
+          const id = crypto.randomUUID()
+          await metti('documenti', {
+            id,
+            nome: String(d.nome || 'documento'),
+            tipo: String(d.tipo || 'application/pdf'),
+            dimensione: Number(d.dimensione) || 0,
+            caricato_il: new Date().toISOString(),
+            contenuto: String(d.contenuto || ''),
+          } satisfies Documento)
+          return id
+        }),
+      apri: (id: string) =>
+        rispondi(async () => {
+          await richiediSessione()
+          const tuttiDoc = await tutti<Documento>('documenti')
+          return tuttiDoc.find((d) => d.id === id) ?? null
+        }),
+      pulisci: () =>
+        rispondi(async () => {
+          await richiediSessione()
+          // si tengono solo i file ancora richiamati da qualche incarico
+          const incarichi = await tutti<IncaricoBM>('bm')
+          const usati = new Set<string>()
+          for (const i of incarichi) {
+            if (i.lettera?.documentoId) usati.add(i.lettera.documentoId)
+            for (const a of i.lettera?.allegati ?? []) usati.add(a.documentoId)
+          }
+          const tuttiDoc = await tutti<Documento>('documenti')
+          let tolti = 0
+          for (const d of tuttiDoc) {
+            if (usati.has(d.id)) continue
+            await togli('documenti', d.id)
+            tolti++
+          }
+          return tolti
         }),
     },
 

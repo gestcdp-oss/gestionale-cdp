@@ -13,6 +13,8 @@ import type { Immobile } from '../lib/tipi'
 export type EsitoLettera = {
   dati: DatiLettera
   nomeFile: string
+  /** il file caricato: viene conservato nell'archivio per poterlo riaprire */
+  file: File
   /** immobili confermati dall'utente, in ordine di comparsa nella lettera */
   immobili: Immobile[]
 }
@@ -34,6 +36,7 @@ export default function CaricaLettera({
   const [errore, setErrore] = useState<string | null>(null)
   const [dati, setDati] = useState<DatiLettera | null>(null)
   const [nomeFile, setNomeFile] = useState('')
+  const [fileScelto, setFileScelto] = useState<File | null>(null)
   const [indice, setIndice] = useState(0)
   // per ogni riga della lettera: l'immobile scelto (o null = "non è dei nostri")
   const [scelte, setScelte] = useState<(Immobile | null)[]>([])
@@ -42,6 +45,7 @@ export default function CaricaLettera({
     setErrore(null)
     setPasso('lettura')
     setNomeFile(file.name)
+    setFileScelto(file)
     try {
       const testo = await testoDaDocumento(file)
       if (testo.replace(/\s/g, '').length < 200) {
@@ -231,7 +235,7 @@ export default function CaricaLettera({
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <button
-                onClick={() => onFatto({ dati, nomeFile, immobili: confermati }, false)}
+                onClick={() => fileScelto && onFatto({ dati, nomeFile, file: fileScelto, immobili: confermati }, false)}
                 className="rounded-xl border-2 border-cielo-400 bg-cielo-50 p-4 text-left transition hover:border-cielo-500 hover:bg-cielo-100"
               >
                 <span className="block font-semibold text-cielo-800">Su tutti gli immobili della lettera</span>
@@ -241,8 +245,14 @@ export default function CaricaLettera({
               </button>
               <button
                 onClick={() =>
+                  fileScelto &&
                   onFatto(
-                    { dati, nomeFile, immobili: immobileCorrente ? [immobileCorrente] : confermati.slice(0, 1) },
+                    {
+                      dati,
+                      nomeFile,
+                      file: fileScelto,
+                      immobili: immobileCorrente ? [immobileCorrente] : confermati.slice(0, 1),
+                    },
                     true,
                   )
                 }

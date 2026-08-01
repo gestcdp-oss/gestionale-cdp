@@ -4,11 +4,16 @@ import { dbLocale } from '../lib/db'
 import { useSelezione } from '../hooks/useSelezione'
 import { useToast } from '../hooks/useToast'
 import { useImmobili } from '../hooks/useImmobili'
+import { useMappa } from '../hooks/useMappa'
 import { BIMESTRI, MESI_BREVI, STATI_AUTORIZZAZIONE, datiBMVuoti } from '../lib/tipi'
-import type { BimestreBM, DatiBM, Immobile, LetteraBM } from '../lib/tipi'
+import type { BimestreBM, DatiBM, Immobile, LetteraBM, AllegatoBM } from '../lib/tipi'
 import { giorniAlla } from '../lib/letteraAttivazione'
 import CaricaLettera, { italiana } from '../components/CaricaLettera'
 import type { EsitoLettera } from '../components/CaricaLettera'
+import CaricaAllegati from '../components/CaricaAllegati'
+import type { FileAnalizzato } from '../components/CaricaAllegati'
+import FinestraDocumento from '../components/FinestraDocumento'
+import { regioneDaLocalizzazione } from '../lib/regioni'
 
 type Salvataggio = 'fermo' | 'in-corso' | 'salvato'
 
@@ -18,6 +23,7 @@ export default function BuildingManagerPage() {
   const { immobile } = useSelezione()
   const { immobili, caricamento: caricamentoImmobili } = useImmobili()
   const toast = useToast()
+  const { apri: apriMappa } = useMappa()
   const dati = immobili.find((i) => i.id === immobile?.id) ?? null
   // rete di sicurezza: se l'immobile selezionato non è più nell'archivio, meglio
   // dirlo che mostrare una scheda vuota senza spiegazioni
@@ -30,6 +36,9 @@ export default function BuildingManagerPage() {
   const [stato, setStato] = useState<Salvataggio>('fermo')
   const [errore, setErrore] = useState<string | null>(null)
   const [caricaLettera, setCaricaLettera] = useState(false)
+  const [caricaAllegati, setCaricaAllegati] = useState(false)
+  // documento aperto nella finestra trascinabile
+  const [documentoAperto, setDocumentoAperto] = useState<string | null>(null)
 
   // il salvataggio parte da solo poco dopo l'ultima modifica
   const attesaSalvataggio = useRef<number | undefined>(undefined)
@@ -125,7 +134,18 @@ export default function BuildingManagerPage() {
    * toccano: quelli vengono dal monitoraggio, non dalla lettera.
    */
   async function registraLettera(esito: EsitoLettera) {
-    const { dati: l, nomeFile, immobili: bersagli } = esito
+    const { dati: l, nomeFile, file, immobili: bersagli } = esito
+    // il file viene conservato nell'archivio, così la lettera si può riaprire
+    const { data: documentoId, error: erroreFile } = await dbLocale.documenti.salva({
+      nome: nomeFile,
+      tipo: file.type || 'application/pdf',
+      dimensione: file.size,
+      contenuto: await base64Di(file),
+    })
+    if (erroreFile) {
+      toast.errore(`Il file della lettera non è stato salvato: ${erroreFile.message}`)
+      return
+    }
     const lettera: LetteraBM = {
       nomeFile,
       caricataIl: new Date().toISOString(),
@@ -136,6 +156,9 @@ export default function BuildingManagerPage() {
       codiceFiscaleBM: l.codiceFiscaleBM,
       importo: l.importo,
       compendi: l.compendi,
+      documentoId,
+      // una lettera nuova azzera gli allegati della precedente
+      allegati: [],
     }
     const primo = Number((l.decorrenza ?? '').slice(0, 4)) || anno
     const ultimo = Number((l.scadenza ?? '').slice(0, 4)) || primo
@@ -166,12 +189,72 @@ export default function BuildingManagerPage() {
       }
     }
     setStato('salvato')
+    // i file non più richiamati da nessun incarico se ne vanno
+    void dbLocale.documenti.pulisci()
     toast.ok(
       `Lettera registrata su ${bersagli.length} ${bersagli.length === 1 ? 'immobile' : 'immobili'}` +
         (anni.length > 1 ? ` per gli anni ${anni.join(', ')}` : ` (${anni[0]})`) +
         `: ${scritti} schede aggiornate.`,
     )
     // ricarico la scheda dell'anno che sto guardando
+    const { data } = await dbLocale.bm.get(immobileId, anno)
+    setCampi(data ? estraiCampi(data) : datiBMVuoti())
+  }
+
+  /**
+   * Registra gli allegati: ognuno viene conservato e agganciato all'incarico
+   * dell'immobile che gli appartiene, su tutti gli anni dell'incarico.
+   */
+  async function registraAllegati(scelti: FileAnalizzato[]) {
+    setCaricaAllegati(false)
+    setStato('in-corso')
+    const primo = Number((campi.periodo_dal ?? '').slice(0, 4)) || anno
+    const ultimo = Number((campi.periodo_al ?? '').slice(0, 4)) || primo
+    const anni: number[] = []
+    for (let a = primo; a <= Math.min(ultimo, primo + 9); a++) anni.push(a)
+
+    let registrati = 0
+    for (const scelto of scelti) {
+      if (!scelto.immobile) continue
+      const { data: documentoId, error } = await dbLocale.documenti.salva({
+        nome: scelto.file.name,
+        tipo: scelto.file.type || 'application/pdf',
+        dimensione: scelto.file.size,
+        contenuto: await base64Di(scelto.file),
+      })
+      if (error || !documentoId) {
+        toast.errore(`"${scelto.file.name}" non è stato salvato: ${error?.message ?? 'errore'}`)
+        continue
+      }
+      const allegato: AllegatoBM = {
+        documentoId,
+        nome: scelto.file.name,
+        asset: scelto.scheda?.asset ?? null,
+        sito: scelto.scheda?.sito ?? null,
+        lotto: scelto.scheda?.lotto ?? null,
+        committente: scelto.scheda?.committente ?? null,
+        classe: scelto.scheda?.classe ?? null,
+        appaltatore: scelto.scheda?.appaltatore ?? null,
+        dal: scelto.scheda?.dal ?? null,
+        al: scelto.scheda?.al ?? null,
+        importoTotale: scelto.scheda?.importoTotale ?? null,
+      }
+      for (const a of anni) {
+        const { data: esistente } = await dbLocale.bm.get(scelto.immobile.id, a)
+        const base = esistente ? estraiCampi(esistente) : datiBMVuoti()
+        if (!base.lettera) continue // niente lettera per quell'anno: si salta
+        // stesso allegato caricato di nuovo: sostituisce il precedente
+        const altri = base.lettera.allegati.filter((x) => x.nome !== allegato.nome)
+        await dbLocale.bm.salva(scelto.immobile.id, a, {
+          ...base,
+          lettera: { ...base.lettera, allegati: [...altri, allegato] },
+        })
+      }
+      registrati++
+    }
+    setStato('salvato')
+    void dbLocale.documenti.pulisci()
+    toast.ok(`${registrati} ${registrati === 1 ? 'allegato registrato' : 'allegati registrati'}.`)
     const { data } = await dbLocale.bm.get(immobileId, anno)
     setCampi(data ? estraiCampi(data) : datiBMVuoti())
   }
@@ -232,12 +315,34 @@ export default function BuildingManagerPage() {
             </label>
           </span>
         </div>
-        {dati?.localizzazione && (
-          <p className="mt-2 text-sm text-cielo-600">
-            {dati.localizzazione}
-            {!regione && <span className="ml-2 text-xs text-cielo-400">(regione non riconosciuta dall'indirizzo)</span>}
-          </p>
-        )}
+        {/* i dati dell'immobile, gli stessi della sua scheda */}
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <DatoLettera etichetta="Asset" valore={dati?.asset ?? immobile.asset} />
+          <DatoLettera etichetta="Denominazione" valore={dati?.denominazione ?? immobile.denominazione} />
+          <DatoLettera etichetta="Portafoglio" valore={dati?.portafoglio ?? null} />
+          <DatoLettera etichetta="Regione" valore={regione} />
+          <div className="sm:col-span-2 lg:col-span-4">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-cielo-500">Localizzazione</dt>
+            <dd className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-cielo-800">
+              {dati?.localizzazione || '—'}
+              {dati?.localizzazione && (
+                <button
+                  onClick={() => apriMappa(dati.localizzazione as string)}
+                  title="Apri la mappa"
+                  className="rounded-full border border-cielo-300 bg-panna px-2 py-0.5 text-xs text-cielo-600 transition hover:bg-cielo-100 hover:text-cielo-800"
+                >
+                  vedi sulla mappa
+                </button>
+              )}
+              <Link
+                to="/immobile"
+                className="text-xs text-cielo-500 underline transition hover:text-cielo-700"
+              >
+                apri la scheda
+              </Link>
+            </dd>
+          </div>
+        </dl>
         {errore && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{errore}</p>}
       </section>
 
@@ -316,15 +421,62 @@ export default function BuildingManagerPage() {
                     }
                   />
                 </dl>
-                {lettera.compendi.length > 1 && (
-                  <p className="mt-3 text-xs text-cielo-500">
-                    Lettera valida per {lettera.compendi.length} compendi.
+                {/* il documento si riapre in una finestra dentro il programma */}
+                <div className="mt-5 border-t border-cielo-200 pt-4">
+                  <p className="text-base font-semibold text-cielo-800">
+                    Lettera valida per {lettera.compendi.length}{' '}
+                    {lettera.compendi.length === 1 ? 'compendio' : 'compendi'}
                   </p>
-                )}
-                <p className="mt-1 text-xs text-cielo-400">
-                  {lettera.nomeFile}
-                  {lettera.caricataIl && ` · caricata il ${new Date(lettera.caricataIl).toLocaleDateString('it-IT')}`}
-                </p>
+                  {lettera.documentoId ? (
+                    <button
+                      onClick={() => setDocumentoAperto(lettera.documentoId)}
+                      title="Apri il documento in una finestra"
+                      className="mt-1 flex items-center gap-1.5 text-sm text-cielo-600 underline transition hover:text-cielo-800"
+                    >
+                      📄 {lettera.nomeFile}
+                    </button>
+                  ) : (
+                    <p className="mt-1 text-sm text-cielo-500">
+                      {lettera.nomeFile}{' '}
+                      <span className="text-xs">(caricata prima che i documenti venissero conservati)</span>
+                    </p>
+                  )}
+                  {lettera.caricataIl && (
+                    <p className="text-xs text-cielo-400">
+                      caricata il {new Date(lettera.caricataIl).toLocaleDateString('it-IT')}
+                    </p>
+                  )}
+
+                  <button
+                    onClick={() => setCaricaAllegati(true)}
+                    className="mt-3 rounded-lg border border-cielo-300 px-3 py-1.5 text-sm text-cielo-700 transition hover:bg-cielo-50"
+                  >
+                    Carica Allegati della lettera
+                  </button>
+
+                  {lettera.allegati.length > 0 && (
+                    <ul className="mt-3 space-y-1.5">
+                      {lettera.allegati.map((a) => (
+                        <li key={a.documentoId} className="flex flex-wrap items-center gap-2 text-sm">
+                          <button
+                            onClick={() => setDocumentoAperto(a.documentoId)}
+                            className="text-cielo-600 underline transition hover:text-cielo-800"
+                          >
+                            📎 {a.nome}
+                          </button>
+                          {a.classe && (
+                            <span className="rounded-full bg-cielo-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-cielo-600">
+                              classe {a.classe}
+                            </span>
+                          )}
+                          {a.importoTotale !== null && (
+                            <span className="text-xs text-cielo-500">{euro(a.importoTotale)}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 {!letteraValida && (
                   <p className="mt-3 rounded-lg border border-amber-300 bg-amber-100 p-3 text-sm text-amber-900">
                     ⚠️ Questa lettera è <b>scaduta</b> il {italiana(campi.periodo_al)}: carica quella nuova.
@@ -383,19 +535,6 @@ export default function BuildingManagerPage() {
                 valore={campi.periodo_al}
                 onCambia={(v) => modifica({ periodo_al: v })}
               />
-              <Campo
-                etichetta="Fabbisogno netto (12 mesi)"
-                tipo="number"
-                valore={campi.fabbisogno === null ? '' : String(campi.fabbisogno)}
-                onCambia={(v) => modifica({ fabbisogno: v === null ? null : Number(v) })}
-                suffisso="€"
-              />
-              <Campo
-                etichetta={`Call off ${anno}`}
-                valore={campi.call_off}
-                onCambia={(v) => modifica({ call_off: v })}
-                mono
-              />
             </div>
           </section>
 
@@ -431,115 +570,6 @@ export default function BuildingManagerPage() {
             </div>
           </section>
 
-          {/* ---------- bimestri ---------- */}
-          <section className="rounded-2xl border border-cielo-200 bg-panna p-6">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">
-                Ripartizione della spesa per bimestri
-              </h2>
-              <span className="text-xs text-cielo-500">
-                Totale bimestri: <b className="text-cielo-700">{euro(totaleBimestri)}</b>
-                {campi.fabbisogno !== null && <> su fabbisogno {euro(campi.fabbisogno)}</>}
-              </span>
-            </div>
-
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm">
-                <thead>
-                  <tr className="border-b border-cielo-200 text-left text-xs uppercase tracking-wide text-cielo-500">
-                    <th className="px-2 py-2 font-semibold">Bimestre</th>
-                    <th className="px-2 py-2 font-semibold">ID BEM</th>
-                    <th className="px-2 py-2 font-semibold">Importo</th>
-                    <th className="px-2 py-2 font-semibold">Allegati GRECA-CAP</th>
-                    <th className="px-2 py-2 font-semibold">Autorizzazione fatturazione</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {BIMESTRI.map((b, i) => (
-                    <tr key={b.n} className="border-b border-cielo-100 last:border-0">
-                      <td className="whitespace-nowrap px-2 py-2 text-cielo-700">
-                        <b>{b.n}°</b> <span className="text-xs text-cielo-500">({b.mesi})</span>
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          value={campi.bimestri[i].idBem ?? ''}
-                          onChange={(e) => modificaBimestre(i, { idBem: e.target.value || null })}
-                          className={`${inputCella} font-mono`}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={campi.bimestri[i].importo ?? ''}
-                          onChange={(e) =>
-                            modificaBimestre(i, { importo: e.target.value === '' ? null : Number(e.target.value) })
-                          }
-                          className={`${inputCella} w-28 text-right`}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <select
-                          value={campi.bimestri[i].allegati ?? ''}
-                          onChange={(e) => modificaBimestre(i, { allegati: e.target.value || null })}
-                          className={inputCella}
-                        >
-                          <option value="">—</option>
-                          <option value="SI">SI</option>
-                          <option value="NO">NO</option>
-                        </select>
-                      </td>
-                      <td className="px-2 py-2">
-                        <SceltaAutorizzazione
-                          valore={campi.bimestri[i].autorizzazione}
-                          onCambia={(v) => modificaBimestre(i, { autorizzazione: v })}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          {/* ---------- semestri e svincolo ---------- */}
-          <section className="rounded-2xl border border-cielo-200 bg-panna p-6">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">
-              Stati di servizio e svincolo
-            </h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Campo etichetta="SDS 1° semestre" valore={campi.sds1} onCambia={(v) => modifica({ sds1: v })} />
-              <Campo etichetta="SDS 2° semestre" valore={campi.sds2} onCambia={(v) => modifica({ sds2: v })} />
-              <Campo
-                etichetta="ID BEM svincolo 10%"
-                valore={campi.svincolo_id}
-                onCambia={(v) => modifica({ svincolo_id: v })}
-                mono
-              />
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-wide text-cielo-500">
-                  Autorizz. svincolo
-                </span>
-                <span className="mt-1 block">
-                  <SceltaAutorizzazione
-                    valore={campi.svincolo_aut}
-                    onCambia={(v) => modifica({ svincolo_aut: v })}
-                    grande
-                  />
-                </span>
-              </label>
-            </div>
-            <label className="mt-4 block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-cielo-500">Note</span>
-              <textarea
-                value={campi.note ?? ''}
-                onChange={(e) => modifica({ note: e.target.value || null })}
-                rows={3}
-                className="mt-1 w-full rounded-lg border border-cielo-300 bg-white px-3 py-2 text-sm text-cielo-800 outline-none transition focus:border-cielo-400 focus:ring-2 focus:ring-cielo-100"
-              />
-            </label>
-          </section>
-
           <p className="text-xs text-cielo-500">
             Le modifiche si salvano da sole.{' '}
             <Link to="/immobile" className="underline hover:text-cielo-700">
@@ -565,8 +595,38 @@ export default function BuildingManagerPage() {
           onFatto={(esito) => void registraLettera(esito)}
         />
       )}
+
+      {caricaAllegati && (
+        <CaricaAllegati
+          immobili={immobili}
+          atteso={{
+            fornitore: campi.fornitore,
+            dal: campi.periodo_dal,
+            al: campi.periodo_al,
+            categoria: campi.categoria,
+          }}
+          onAnnulla={() => setCaricaAllegati(false)}
+          onFatto={(scelti) => void registraAllegati(scelti)}
+        />
+      )}
+
+      {documentoAperto && (
+        <FinestraDocumento id={documentoAperto} onChiudi={() => setDocumentoAperto(null)} />
+      )}
     </div>
   )
+}
+
+/** Il file caricato, pronto per essere conservato nell'archivio. */
+async function base64Di(file: File): Promise<string> {
+  const byte = new Uint8Array(await file.arrayBuffer())
+  let testo = ''
+  // a pezzi: con i file grandi la conversione in un colpo solo va in errore
+  const passo = 0x8000
+  for (let i = 0; i < byte.length; i += passo) {
+    testo += String.fromCharCode(...byte.subarray(i, i + passo))
+  }
+  return btoa(testo)
 }
 
 /** Giorni che mancano alla scadenza dell'incarico, accanto al titolo. */

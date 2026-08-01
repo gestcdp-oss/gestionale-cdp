@@ -24,6 +24,35 @@ export type BimestreBM = {
   autorizzazione: string | null
 }
 
+/**
+ * Un documento caricato (lettera o allegato) conservato nell'archivio, così si
+ * può riaprire quando serve. Il contenuto è il file stesso, in base64.
+ */
+export type Documento = {
+  id: string
+  nome: string
+  tipo: string
+  dimensione: number
+  caricato_il: string
+  contenuto: string
+}
+
+/** Un allegato della lettera, con i dati letti dalla sua scheda intervento. */
+export type AllegatoBM = {
+  documentoId: string
+  nome: string
+  /** asset e denominazione del sito indicati nella scheda */
+  asset: string | null
+  sito: string | null
+  lotto: string | null
+  committente: string | null
+  classe: string | null
+  appaltatore: string | null
+  dal: string | null
+  al: string | null
+  importoTotale: number | null
+}
+
 /** Dati letti dalla Lettera di attivazione, conservati insieme all'incarico. */
 export type LetteraBM = {
   nomeFile: string | null
@@ -37,6 +66,10 @@ export type LetteraBM = {
   importo: number | null
   /** i compendi elencati nella lettera, così come sono scritti */
   compendi: string[]
+  /** il file della lettera nell'archivio dei documenti (per riaprirla) */
+  documentoId: string | null
+  /** schede intervento e altri allegati della lettera */
+  allegati: AllegatoBM[]
 }
 
 export type IncaricoBM = {

@@ -1,5 +1,5 @@
 import { creaApiBrowser } from './dbBrowser'
-import type { Immobile, IncaricoBM, DatiBM } from './tipi'
+import type { Immobile, IncaricoBM, DatiBM, Documento } from './tipi'
 
 export type RispostaDb<T> = { data: T | null; error: { code?: string; message: string } | null }
 
@@ -67,6 +67,13 @@ export type ApiTravi = {
     /** fornitori già usati, per suggerirli negli altri immobili */
     fornitori(): Promise<RispostaDb<string[]>>
     rimuovi(immobileId: string, anno: number): Promise<RispostaDb<null>>
+  }
+  documenti: {
+    /** salva il file caricato e restituisce il suo identificativo */
+    salva(d: { nome: string; tipo: string; contenuto: string; dimensione: number }): Promise<RispostaDb<string>>
+    apri(id: string): Promise<RispostaDb<Documento | null>>
+    /** cancella i documenti che nessun incarico usa più */
+    pulisci(): Promise<RispostaDb<number>>
   }
   mappa: {
     apri(query: string, modo: 'finestra' | 'browser'): Promise<RispostaDb<null>>
