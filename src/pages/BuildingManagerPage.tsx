@@ -324,6 +324,43 @@ export default function BuildingManagerPage() {
     setCampi(data ? estraiCampi(data) : datiBMVuoti())
   }
 
+  /**
+   * Aggancia il file a una lettera registrata quando il documento non era stato
+   * conservato (le prime versioni salvavano solo i dati letti). Il file viene
+   * collegato dovunque quella lettera sia stata registrata.
+   */
+  async function agganciaFileLettera(file: File) {
+    const attuale = campi.lettera
+    if (!attuale) return
+    setStato('in-corso')
+    const { data: documentoId, error } = await dbLocale.documenti.salva({
+      nome: file.name,
+      tipo: file.type || 'application/pdf',
+      dimensione: file.size,
+      contenuto: await base64Di(file),
+    })
+    if (error || !documentoId) {
+      setStato('fermo')
+      toast.errore(`File non salvato: ${error?.message ?? 'errore'}`)
+      return
+    }
+    const { data: incarichi } = await dbLocale.bm.tutti()
+    const coinvolti = (incarichi ?? []).filter((i) => stessaLettera(i.lettera, attuale))
+    for (const i of coinvolti) {
+      const base = estraiCampi(i)
+      if (!base.lettera) continue
+      await dbLocale.bm.salva(i.immobile_id, i.anno, {
+        ...base,
+        lettera: { ...base.lettera, nomeFile: file.name, documentoId },
+      })
+    }
+    void dbLocale.documenti.pulisci()
+    setStato('salvato')
+    toast.ok(`«${file.name}» collegato alla lettera: ora si apre da qui.`)
+    const { data } = await dbLocale.bm.get(immobileId, anno)
+    setCampi(data ? estraiCampi(data) : datiBMVuoti())
+  }
+
   /** Cancella un allegato: solo per questo immobile, su tutti gli anni della lettera. */
   async function cancellaAllegato(allegato: AllegatoBM) {
     setAllegatoDaCancellare(null)
@@ -530,9 +567,20 @@ export default function BuildingManagerPage() {
                         📄 {lettera.nomeFile}
                       </button>
                     ) : (
-                      <span className="text-sm text-cielo-500">
-                        {lettera.nomeFile}{' '}
-                        <span className="text-xs">(caricata prima che i documenti venissero conservati)</span>
+                      <span className="flex flex-wrap items-center gap-2 text-sm text-cielo-500">
+                        📄 {lettera.nomeFile}
+                        <label className="cursor-pointer rounded-lg border border-cielo-300 px-2 py-1 text-xs text-cielo-700 transition hover:bg-cielo-50">
+                          Aggiungi il file per poterla aprire
+                          <input
+                            type="file"
+                            accept="application/pdf,.pdf,.docx"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0]
+                              if (f) void agganciaFileLettera(f)
+                            }}
+                          />
+                        </label>
                       </span>
                     )}
                     <button
