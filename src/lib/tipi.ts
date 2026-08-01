@@ -35,8 +35,6 @@ export type LetteraBM = {
   codiceFiscaleBM: string | null
   /** importo delle prestazioni affidate, come scritto nella lettera */
   importo: number | null
-  protocollo: string | null
-  protocolloData: string | null
   /** i compendi elencati nella lettera, così come sono scritti */
   compendi: string[]
 }

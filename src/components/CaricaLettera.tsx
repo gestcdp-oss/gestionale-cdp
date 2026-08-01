@@ -179,11 +179,6 @@ export default function CaricaLettera({
                     : null
                 }
               />
-              <Voce
-                etichetta="Protocollo"
-                valore={dati.protocollo}
-                sotto={dati.protocolloData ? italiana(dati.protocolloData) : null}
-              />
             </dl>
             <p className="mt-4 rounded-xl border border-cielo-200 bg-cielo-50 p-3 text-sm text-cielo-700">
               La lettera riguarda <b>{dati.compendi.length} compendi</b>. Adesso li abbiniamo agli immobili

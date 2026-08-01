@@ -17,8 +17,6 @@ export type DatiLettera = {
   importo: number | null
   decorrenza: string | null // AAAA-MM-GG
   scadenza: string | null // AAAA-MM-GG
-  protocollo: string | null
-  protocolloData: string | null // AAAA-MM-GG
 }
 
 export type EsitoLettura = {
@@ -42,8 +40,6 @@ const VUOTI: DatiLettera = {
   importo: null,
   decorrenza: null,
   scadenza: null,
-  protocollo: null,
-  protocolloData: null,
 }
 
 /** Apostrofi, virgolette e trattini "tipografici" diventano quelli semplici. */
@@ -173,13 +169,6 @@ export function leggiLettera(testoGrezzo: string): EsitoLettura {
   // --- durata: decorrenza e scadenza ---
   dati.decorrenza = cercaData(unaRiga, /decorrenza\s+dal\s+(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/i)
   dati.scadenza = cercaData(unaRiga, /scadenza\s+al\s+(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/i)
-
-  // --- protocollo (in fondo alla lettera protocollata) ---
-  const prot = unaRiga.match(/U\s*(\d{6,8}\/\d{2})\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/)
-  if (prot) {
-    dati.protocollo = prot[1]
-    dati.protocolloData = dataIso(prot[2], prot[3], prot[4])
-  }
 
   // --- controlli ---
   const parlaDiBM = /building\s+manager/i.test(dati.tipoAttivazione ?? '')

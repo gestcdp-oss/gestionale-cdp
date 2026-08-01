@@ -1029,8 +1029,6 @@ function normalizzaBM(campi: Partial<DatiBM>): DatiBM {
           tipoAttivazione: pulisci(l.tipoAttivazione),
           codiceFiscaleBM: pulisci(l.codiceFiscaleBM),
           importo: numeroOppureNulla(l.importo),
-          protocollo: pulisci(l.protocollo),
-          protocolloData: pulisci(l.protocolloData),
           compendi: Array.isArray(l.compendi) ? l.compendi.map((c) => String(c)) : [],
         }
       : null,

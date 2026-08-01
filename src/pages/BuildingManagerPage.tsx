@@ -135,8 +135,6 @@ export default function BuildingManagerPage() {
       tipoAttivazione: l.tipoAttivazione,
       codiceFiscaleBM: l.codiceFiscaleBM,
       importo: l.importo,
-      protocollo: l.protocollo,
-      protocolloData: l.protocolloData,
       compendi: l.compendi,
     }
     const primo = Number((l.decorrenza ?? '').slice(0, 4)) || anno
@@ -316,11 +314,6 @@ export default function BuildingManagerPage() {
                         ? `dal ${italiana(campi.periodo_dal)} al ${italiana(campi.periodo_al)}`
                         : null
                     }
-                  />
-                  <DatoLettera
-                    etichetta="Protocollo"
-                    valore={lettera.protocollo}
-                    sotto={lettera.protocolloData ? italiana(lettera.protocolloData) : null}
                   />
                 </dl>
                 {lettera.compendi.length > 1 && (
