@@ -24,10 +24,29 @@ export type BimestreBM = {
   autorizzazione: string | null
 }
 
+/** Dati letti dalla Lettera di attivazione, conservati insieme all'incarico. */
+export type LetteraBM = {
+  nomeFile: string | null
+  caricataIl: string | null
+  fornitoreIndirizzo: string | null
+  accordoData: string | null
+  accordoNome: string | null
+  tipoAttivazione: string | null
+  codiceFiscaleBM: string | null
+  /** importo delle prestazioni affidate, come scritto nella lettera */
+  importo: number | null
+  protocollo: string | null
+  protocolloData: string | null
+  /** i compendi elencati nella lettera, così come sono scritti */
+  compendi: string[]
+}
+
 export type IncaricoBM = {
   id: string
   immobile_id: string
   anno: number
+  /** null finché non si carica una Lettera di attivazione */
+  lettera: LetteraBM | null
   fornitore: string | null
   /** nominativo del Building Manager incaricato */
   nominativo: string | null
@@ -77,6 +96,7 @@ export function bimestreVuoto(): BimestreBM {
 
 export function datiBMVuoti(): DatiBM {
   return {
+    lettera: null,
     fornitore: null,
     nominativo: null,
     recapito: null,

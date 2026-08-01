@@ -128,6 +128,7 @@ function apriDb(nomeFile = 'travi.db') {
       call_off      text,
       report_json   text,
       bimestri_json text,
+      lettera_json  text,
       sds1          text,
       sds2          text,
       svincolo_id   text,
@@ -140,6 +141,8 @@ function apriDb(nomeFile = 'travi.db') {
   // archivi nati prima della regione: la colonna si aggiunge senza toccare i dati
   const colonne = db.prepare('pragma table_info(immobili)').all().map((c) => c.name)
   if (!colonne.includes('regione')) db.exec('alter table immobili add column regione text')
+  const colonneBm = db.prepare('pragma table_info(bm)').all().map((c) => c.name)
+  if (!colonneBm.includes('lettera_json')) db.exec('alter table bm add column lettera_json text')
   seminaSeServe()
 }
 
@@ -513,8 +516,16 @@ function bmDaRiga(r) {
   }
   const report = leggi(r.report_json, [])
   const bimestri = leggi(r.bimestri_json, [])
+  let lettera = null
+  try {
+    const v = JSON.parse(r.lettera_json)
+    if (v && typeof v === 'object') lettera = v
+  } catch {
+    /* nessuna lettera registrata */
+  }
   return {
     id: r.id,
+    lettera,
     immobile_id: r.immobile_id,
     anno: Number(r.anno),
     fornitore: r.fornitore,
@@ -573,6 +584,7 @@ ipcMain.handle('bm:salva', (_ev, { immobileId, anno, campi }) =>
     })
     const esistente = db.prepare('select id from bm where immobile_id = ? and anno = ?').get(immobileId, a)
     const valori = [
+      c.lettera ? JSON.stringify(c.lettera) : null,
       pulisci(c.fornitore),
       pulisci(c.nominativo),
       pulisci(c.recapito),
@@ -591,7 +603,7 @@ ipcMain.handle('bm:salva', (_ev, { immobileId, anno, campi }) =>
     ]
     if (esistente) {
       db.prepare(
-        `update bm set fornitore = ?, nominativo = ?, recapito = ?, categoria = ?, periodo_dal = ?,
+        `update bm set lettera_json = ?, fornitore = ?, nominativo = ?, recapito = ?, categoria = ?, periodo_dal = ?,
                        periodo_al = ?, fabbisogno = ?, call_off = ?, report_json = ?, bimestri_json = ?,
                        sds1 = ?, sds2 = ?, svincolo_id = ?, svincolo_aut = ?, note = ?,
                        aggiornato_il = datetime('now')
@@ -599,10 +611,10 @@ ipcMain.handle('bm:salva', (_ev, { immobileId, anno, campi }) =>
       ).run(...valori, esistente.id)
     } else {
       db.prepare(
-        `insert into bm (id, immobile_id, anno, fornitore, nominativo, recapito, categoria, periodo_dal,
-                         periodo_al, fabbisogno, call_off, report_json, bimestri_json, sds1, sds2,
-                         svincolo_id, svincolo_aut, note)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `insert into bm (id, immobile_id, anno, lettera_json, fornitore, nominativo, recapito, categoria,
+                         periodo_dal, periodo_al, fabbisogno, call_off, report_json, bimestri_json, sds1,
+                         sds2, svincolo_id, svincolo_aut, note)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(crypto.randomUUID(), immobileId, a, ...valori)
     }
     return null

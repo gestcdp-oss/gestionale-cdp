@@ -5,7 +5,10 @@ import { useSelezione } from '../hooks/useSelezione'
 import { useToast } from '../hooks/useToast'
 import { useImmobili } from '../hooks/useImmobili'
 import { BIMESTRI, MESI_BREVI, STATI_AUTORIZZAZIONE, datiBMVuoti } from '../lib/tipi'
-import type { BimestreBM, DatiBM } from '../lib/tipi'
+import type { BimestreBM, DatiBM, Immobile, LetteraBM } from '../lib/tipi'
+import { giorniAlla } from '../lib/letteraAttivazione'
+import CaricaLettera, { italiana } from '../components/CaricaLettera'
+import type { EsitoLettera } from '../components/CaricaLettera'
 
 type Salvataggio = 'fermo' | 'in-corso' | 'salvato'
 
@@ -26,6 +29,7 @@ export default function BuildingManagerPage() {
   const [caricamento, setCaricamento] = useState(true)
   const [stato, setStato] = useState<Salvataggio>('fermo')
   const [errore, setErrore] = useState<string | null>(null)
+  const [caricaLettera, setCaricaLettera] = useState(false)
 
   // il salvataggio parte da solo poco dopo l'ultima modifica
   const attesaSalvataggio = useRef<number | undefined>(undefined)
@@ -115,8 +119,75 @@ export default function BuildingManagerPage() {
   const campiCorrenti = useRef(campi)
   campiCorrenti.current = campi
 
+  /**
+   * Registra i dati della lettera sugli immobili confermati e su tutti gli anni
+   * coperti dall'incarico. Report mensili e bimestri di ogni anno non si
+   * toccano: quelli vengono dal monitoraggio, non dalla lettera.
+   */
+  async function registraLettera(esito: EsitoLettera) {
+    const { dati: l, nomeFile, immobili: bersagli } = esito
+    const lettera: LetteraBM = {
+      nomeFile,
+      caricataIl: new Date().toISOString(),
+      fornitoreIndirizzo: l.fornitoreIndirizzo,
+      accordoData: l.accordoData,
+      accordoNome: l.accordoNome,
+      tipoAttivazione: l.tipoAttivazione,
+      codiceFiscaleBM: l.codiceFiscaleBM,
+      importo: l.importo,
+      protocollo: l.protocollo,
+      protocolloData: l.protocolloData,
+      compendi: l.compendi,
+    }
+    const primo = Number((l.decorrenza ?? '').slice(0, 4)) || anno
+    const ultimo = Number((l.scadenza ?? '').slice(0, 4)) || primo
+    const anni: number[] = []
+    for (let a = primo; a <= Math.min(ultimo, primo + 9); a++) anni.push(a)
+
+    setCaricaLettera(false)
+    setStato('in-corso')
+    let scritti = 0
+    for (const im of bersagli) {
+      for (const a of anni) {
+        const { data: esistente } = await dbLocale.bm.get(im.id, a)
+        const base = esistente ? estraiCampi(esistente) : datiBMVuoti()
+        const { error } = await dbLocale.bm.salva(im.id, a, {
+          ...base,
+          lettera,
+          fornitore: l.fornitore ?? base.fornitore,
+          nominativo: l.buildingManager ?? base.nominativo,
+          periodo_dal: l.decorrenza ?? base.periodo_dal,
+          periodo_al: l.scadenza ?? base.periodo_al,
+        })
+        if (error) {
+          setStato('fermo')
+          toast.errore(`Registrazione non riuscita: ${error.message}`)
+          return
+        }
+        scritti++
+      }
+    }
+    setStato('salvato')
+    toast.ok(
+      `Lettera registrata su ${bersagli.length} ${bersagli.length === 1 ? 'immobile' : 'immobili'}` +
+        (anni.length > 1 ? ` per gli anni ${anni.join(', ')}` : ` (${anni[0]})`) +
+        `: ${scritti} schede aggiornate.`,
+    )
+    // ricarico la scheda dell'anno che sto guardando
+    const { data } = await dbLocale.bm.get(immobileId, anno)
+    setCampi(data ? estraiCampi(data) : datiBMVuoti())
+  }
+
   // la regione è quella salvata sull'immobile (modificabile dalla sua scheda)
   const regione = dati?.regione?.trim() || null
+  const lettera = campi.lettera
+  const giorniAllaScadenza = giorniAlla(campi.periodo_al)
+  const inScadenza = giorniAllaScadenza !== null && giorniAllaScadenza <= 60
+  // "in corso di validità": la scadenza non è ancora passata
+  const letteraValida = Boolean(lettera) && (giorniAllaScadenza === null || giorniAllaScadenza >= 0)
+  // se non c'è nessun dato, la pagina mostra solo il pulsante di caricamento
+  const schedaVuota =
+    !lettera && !campi.fornitore && !campi.nominativo && !campi.fabbisogno && !campi.call_off
   const totaleBimestri = campi.bimestri.reduce((s, b) => s + (b.importo ?? 0), 0)
   const reportConsegnati = campi.report.filter(Boolean).length
   const anniElenco = Array.from(new Set([ANNO_CORRENTE, ANNO_CORRENTE + 1, ANNO_CORRENTE - 1, ...anni])).sort(
@@ -182,11 +253,112 @@ export default function BuildingManagerPage() {
         </p>
       ) : caricamento ? (
         <p className="text-sm text-cielo-500">Caricamento…</p>
+      ) : schedaVuota ? (
+        /* nessuna lettera e nessun dato: si parte da qui */
+        <section className="rounded-2xl border border-cielo-200 bg-panna p-10 text-center">
+          <p className="text-4xl">📄</p>
+          <h2 className="mt-3 text-lg font-semibold text-cielo-800">
+            Nessuna Lettera di attivazione in corso di validità
+          </h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-cielo-600">
+            I dati dell'incarico di Building Management si ricavano dalla Lettera di attivazione: caricala e il
+            programma ne legge fornitore, accordo quadro, nominativo del Building Manager, importo e durata.
+          </p>
+          <button
+            onClick={() => setCaricaLettera(true)}
+            className="mt-5 rounded-lg bg-cielo-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-cielo-600"
+          >
+            Carica Lettera di Attivazione
+          </button>
+        </section>
       ) : (
         <>
+          {/* ---------- lettera di attivazione ---------- */}
+          <section
+            className={`rounded-2xl border p-6 ${
+              letteraValida ? 'border-cielo-200 bg-panna' : 'border-amber-200 bg-amber-50'
+            }`}
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">
+                Lettera di attivazione
+              </h2>
+              <button
+                onClick={() => setCaricaLettera(true)}
+                className="rounded-lg border border-cielo-300 px-3 py-1.5 text-sm text-cielo-700 transition hover:bg-cielo-50"
+              >
+                {lettera ? 'Carica una nuova lettera' : 'Carica Lettera di Attivazione'}
+              </button>
+            </div>
+
+            {lettera ? (
+              <>
+                <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <DatoLettera etichetta="Fornitore" valore={campi.fornitore} sotto={lettera.fornitoreIndirizzo} />
+                  <DatoLettera
+                    etichetta="Accordo quadro"
+                    valore={lettera.accordoNome}
+                    sotto={lettera.accordoData ? `del ${italiana(lettera.accordoData)}` : null}
+                  />
+                  <DatoLettera
+                    etichetta="Building Manager"
+                    valore={campi.nominativo}
+                    sotto={lettera.codiceFiscaleBM}
+                  />
+                  <DatoLettera
+                    etichetta="Importo prestazione"
+                    valore={lettera.importo === null ? null : euro(lettera.importo)}
+                  />
+                  <DatoLettera
+                    etichetta="Durata"
+                    valore={
+                      campi.periodo_dal && campi.periodo_al
+                        ? `dal ${italiana(campi.periodo_dal)} al ${italiana(campi.periodo_al)}`
+                        : null
+                    }
+                  />
+                  <DatoLettera
+                    etichetta="Protocollo"
+                    valore={lettera.protocollo}
+                    sotto={lettera.protocolloData ? italiana(lettera.protocolloData) : null}
+                  />
+                </dl>
+                {lettera.compendi.length > 1 && (
+                  <p className="mt-3 text-xs text-cielo-500">
+                    Lettera valida per {lettera.compendi.length} compendi.
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-cielo-400">
+                  {lettera.nomeFile}
+                  {lettera.caricataIl && ` · caricata il ${new Date(lettera.caricataIl).toLocaleDateString('it-IT')}`}
+                </p>
+                {!letteraValida && (
+                  <p className="mt-3 rounded-lg border border-amber-300 bg-amber-100 p-3 text-sm text-amber-900">
+                    ⚠️ Questa lettera è <b>scaduta</b> il {italiana(campi.periodo_al)}: carica quella nuova.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="mt-3 text-sm text-amber-800">
+                Per questo immobile non è stata caricata nessuna lettera: i dati qui sotto arrivano dal
+                monitoraggio.
+              </p>
+            )}
+          </section>
+
           {/* ---------- incarico ---------- */}
           <section className="rounded-2xl border border-cielo-200 bg-panna p-6">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">Incarico {anno}</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">Incarico {anno}</h2>
+              <Scadenza giorni={giorniAllaScadenza} scadenza={campi.periodo_al} />
+            </div>
+            {inScadenza && giorniAllaScadenza !== null && giorniAllaScadenza >= 0 && (
+              <p className="mt-3 flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+                <IconaCampanella />
+                Attenzione, incarico in scadenza tra {giorniAllaScadenza}{' '}
+                {giorniAllaScadenza === 1 ? 'giorno' : 'giorni'} ({italiana(campi.periodo_al)}).
+              </p>
+            )}
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Campo
                 etichetta="Fornitore"
@@ -391,6 +563,56 @@ export default function BuildingManagerPage() {
         ))}
       </datalist>
       <ElencoFornitori />
+
+      {caricaLettera && (
+        <CaricaLettera
+          immobili={immobili}
+          immobileCorrente={dati}
+          onAnnulla={() => setCaricaLettera(false)}
+          onFatto={(esito) => void registraLettera(esito)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Giorni che mancano alla scadenza dell'incarico, accanto al titolo. */
+function Scadenza({ giorni, scadenza }: { giorni: number | null; scadenza: string | null }) {
+  if (giorni === null || !scadenza) return null
+  if (giorni < 0) {
+    return (
+      <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
+        scaduto da {-giorni} {(-giorni) === 1 ? 'giorno' : 'giorni'} ({italiana(scadenza)})
+      </span>
+    )
+  }
+  const stile =
+    giorni <= 60 ? 'bg-amber-50 text-amber-800' : giorni <= 180 ? 'bg-cielo-100 text-cielo-700' : 'bg-emerald-50 text-emerald-700'
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs font-medium ${stile}`}>
+      {giorni === 0 ? 'scade oggi' : `mancano ${giorni} ${giorni === 1 ? 'giorno' : 'giorni'} alla scadenza`} (
+      {italiana(scadenza)})
+    </span>
+  )
+}
+
+function IconaCampanella() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  )
+}
+
+function DatoLettera({ etichetta, valore, sotto }: { etichetta: string; valore: string | null; sotto?: string | null }) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-cielo-500">{etichetta}</dt>
+      <dd className={`mt-0.5 text-sm ${valore ? 'text-cielo-800' : 'text-cielo-400'}`}>
+        {valore || '—'}
+        {sotto && <span className="block text-xs text-cielo-500">{sotto}</span>}
+      </dd>
     </div>
   )
 }
@@ -404,6 +626,7 @@ function euro(n: number): string {
 
 /** I campi salvati, senza identità e senza data di aggiornamento. */
 function estraiCampi(r: {
+  lettera?: LetteraBM | null
   fornitore: string | null
   nominativo: string | null
   recapito: string | null
@@ -422,6 +645,7 @@ function estraiCampi(r: {
 }): DatiBM {
   const vuoto = datiBMVuoti()
   return {
+    lettera: r.lettera ?? null,
     fornitore: r.fornitore,
     nominativo: r.nominativo,
     recapito: r.recapito,

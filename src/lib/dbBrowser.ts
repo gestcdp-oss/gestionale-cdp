@@ -1017,7 +1017,23 @@ function normalizzaBM(campi: Partial<DatiBM>): DatiBM {
   const base = datiBMVuoti()
   const report = Array.isArray(campi.report) ? campi.report : base.report
   const bimestri = Array.isArray(campi.bimestri) ? campi.bimestri : base.bimestri
+  const l = campi.lettera
   return {
+    lettera: l
+      ? {
+          nomeFile: pulisci(l.nomeFile),
+          caricataIl: pulisci(l.caricataIl),
+          fornitoreIndirizzo: pulisci(l.fornitoreIndirizzo),
+          accordoData: pulisci(l.accordoData),
+          accordoNome: pulisci(l.accordoNome),
+          tipoAttivazione: pulisci(l.tipoAttivazione),
+          codiceFiscaleBM: pulisci(l.codiceFiscaleBM),
+          importo: numeroOppureNulla(l.importo),
+          protocollo: pulisci(l.protocollo),
+          protocolloData: pulisci(l.protocolloData),
+          compendi: Array.isArray(l.compendi) ? l.compendi.map((c) => String(c)) : [],
+        }
+      : null,
     fornitore: pulisci(campi.fornitore),
     nominativo: pulisci(campi.nominativo),
     recapito: pulisci(campi.recapito),
