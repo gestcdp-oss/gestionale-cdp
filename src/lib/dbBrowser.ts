@@ -1539,6 +1539,11 @@ export function creaApiBrowser(): ApiTravi {
           const nomi = new Set(righe.map((r) => (r.fornitore ?? '').trim()).filter(Boolean))
           return [...nomi].sort((a, b) => a.localeCompare(b, 'it'))
         }),
+      tutti: () =>
+        rispondi(async () => {
+          await richiediSessione()
+          return tutti<IncaricoBM>('bm')
+        }),
       rimuovi: (immobileId: string, anno: number) =>
         rispondi(async () => {
           await richiediSessione()

@@ -694,6 +694,13 @@ ipcMain.handle('bm:fornitori', () =>
   }),
 )
 
+ipcMain.handle('bm:tutti', () =>
+  rispondi(() => {
+    richiediSessione()
+    return db.prepare('select * from bm').all().map(bmDaRiga)
+  }),
+)
+
 ipcMain.handle('bm:rimuovi', (_ev, { immobileId, anno }) =>
   rispondi(() => {
     richiediSessione()

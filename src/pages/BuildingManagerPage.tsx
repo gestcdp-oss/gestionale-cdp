@@ -13,6 +13,7 @@ import type { EsitoLettera } from '../components/CaricaLettera'
 import CaricaAllegati from '../components/CaricaAllegati'
 import type { FileAnalizzato } from '../components/CaricaAllegati'
 import FinestraDocumento from '../components/FinestraDocumento'
+import ConfermaCodice from '../components/ConfermaCodice'
 import { regioneDaLocalizzazione } from '../lib/regioni'
 
 type Salvataggio = 'fermo' | 'in-corso' | 'salvato'
@@ -39,6 +40,8 @@ export default function BuildingManagerPage() {
   const [caricaAllegati, setCaricaAllegati] = useState(false)
   // documento aperto nella finestra trascinabile
   const [documentoAperto, setDocumentoAperto] = useState<string | null>(null)
+  const [confermaCancellaLettera, setConfermaCancellaLettera] = useState(false)
+  const [allegatoDaCancellare, setAllegatoDaCancellare] = useState<AllegatoBM | null>(null)
 
   // il salvataggio parte da solo poco dopo l'ultima modifica
   const attesaSalvataggio = useRef<number | undefined>(undefined)
@@ -268,6 +271,60 @@ export default function BuildingManagerPage() {
     setCampi(data ? estraiCampi(data) : datiBMVuoti())
   }
 
+  /**
+   * Cancella la lettera dovunque sia stata registrata: la stessa lettera vale
+   * per più compendi, quindi se ne va da tutti gli immobili e da tutti gli anni,
+   * allegati compresi.
+   */
+  async function cancellaLettera() {
+    const daTogliere = campi.lettera
+    if (!daTogliere) return
+    setConfermaCancellaLettera(false)
+    setStato('in-corso')
+    const { data: incarichi } = await dbLocale.bm.tutti()
+    const coinvolti = (incarichi ?? []).filter((i) => stessaLettera(i.lettera, daTogliere))
+    for (const i of coinvolti) {
+      const base = estraiCampi(i)
+      await dbLocale.bm.salva(i.immobile_id, i.anno, { ...base, lettera: null })
+    }
+    void dbLocale.documenti.pulisci()
+    setStato('fermo')
+    const quantiImmobili = new Set(coinvolti.map((i) => i.immobile_id)).size
+    toast.ok(
+      `Lettera «${daTogliere.nomeFile}» cancellata da ${quantiImmobili} ${
+        quantiImmobili === 1 ? 'immobile' : 'immobili'
+      } (${coinvolti.length} schede), allegati compresi.`,
+    )
+    const { data } = await dbLocale.bm.get(immobileId, anno)
+    setCampi(data ? estraiCampi(data) : datiBMVuoti())
+  }
+
+  /** Cancella un allegato: solo per questo immobile, su tutti gli anni della lettera. */
+  async function cancellaAllegato(allegato: AllegatoBM) {
+    setAllegatoDaCancellare(null)
+    setStato('in-corso')
+    const primo = Number((campi.periodo_dal ?? '').slice(0, 4)) || anno
+    const ultimo = Number((campi.periodo_al ?? '').slice(0, 4)) || primo
+    for (let a = primo; a <= Math.min(ultimo, primo + 9); a++) {
+      const { data: esistente } = await dbLocale.bm.get(immobileId, a)
+      if (!esistente?.lettera) continue
+      const base = estraiCampi(esistente)
+      if (!base.lettera) continue
+      await dbLocale.bm.salva(immobileId, a, {
+        ...base,
+        lettera: {
+          ...base.lettera,
+          allegati: base.lettera.allegati.filter((x) => x.documentoId !== allegato.documentoId),
+        },
+      })
+    }
+    void dbLocale.documenti.pulisci()
+    setStato('fermo')
+    toast.ok(`Allegato «${allegato.nome}» cancellato da ${dati?.denominazione ?? 'questo immobile'}.`)
+    const { data } = await dbLocale.bm.get(immobileId, anno)
+    setCampi(data ? estraiCampi(data) : datiBMVuoti())
+  }
+
   // la regione è quella salvata sull'immobile (modificabile dalla sua scheda)
   const regione = dati?.regione?.trim() || null
   const lettera = campi.lettera
@@ -395,12 +452,14 @@ export default function BuildingManagerPage() {
               <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">
                 Lettera di attivazione
               </h2>
-              <button
-                onClick={() => setCaricaLettera(true)}
-                className="rounded-lg border border-cielo-300 px-3 py-1.5 text-sm text-cielo-700 transition hover:bg-cielo-50"
-              >
-                {lettera ? 'Carica una nuova lettera' : 'Carica Lettera di Attivazione'}
-              </button>
+              {!lettera && (
+                <button
+                  onClick={() => setCaricaLettera(true)}
+                  className="rounded-lg border border-cielo-300 px-3 py-1.5 text-sm text-cielo-700 transition hover:bg-cielo-50"
+                >
+                  Carica Lettera di Attivazione
+                </button>
+              )}
             </div>
 
             {lettera ? (
@@ -436,20 +495,29 @@ export default function BuildingManagerPage() {
                     Lettera valida per {lettera.compendi.length}{' '}
                     {lettera.compendi.length === 1 ? 'compendio' : 'compendi'}
                   </p>
-                  {lettera.documentoId ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    {lettera.documentoId ? (
+                      <button
+                        onClick={() => setDocumentoAperto(lettera.documentoId)}
+                        title="Apri il documento in una finestra"
+                        className="flex items-center gap-1.5 text-sm text-cielo-600 underline transition hover:text-cielo-800"
+                      >
+                        📄 {lettera.nomeFile}
+                      </button>
+                    ) : (
+                      <span className="text-sm text-cielo-500">
+                        {lettera.nomeFile}{' '}
+                        <span className="text-xs">(caricata prima che i documenti venissero conservati)</span>
+                      </span>
+                    )}
                     <button
-                      onClick={() => setDocumentoAperto(lettera.documentoId)}
-                      title="Apri il documento in una finestra"
-                      className="mt-1 flex items-center gap-1.5 text-sm text-cielo-600 underline transition hover:text-cielo-800"
+                      onClick={() => setConfermaCancellaLettera(true)}
+                      title="Cancella la lettera e i suoi allegati"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-cielo-400 transition hover:bg-red-50 hover:text-red-600"
                     >
-                      📄 {lettera.nomeFile}
+                      <IconaCestino />
                     </button>
-                  ) : (
-                    <p className="mt-1 text-sm text-cielo-500">
-                      {lettera.nomeFile}{' '}
-                      <span className="text-xs">(caricata prima che i documenti venissero conservati)</span>
-                    </p>
-                  )}
+                  </div>
                   {lettera.caricataIl && (
                     <p className="text-xs text-cielo-400">
                       caricata il {new Date(lettera.caricataIl).toLocaleDateString('it-IT')}
@@ -481,6 +549,13 @@ export default function BuildingManagerPage() {
                           {a.importoTotale !== null && (
                             <span className="text-xs text-cielo-500">{euro(a.importoTotale)}</span>
                           )}
+                          <button
+                            onClick={() => setAllegatoDaCancellare(a)}
+                            title="Cancella questo allegato (solo per questo immobile)"
+                            className="flex h-6 w-6 items-center justify-center rounded-full text-cielo-400 transition hover:bg-red-50 hover:text-red-600"
+                          >
+                            <IconaCestino />
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -630,7 +705,67 @@ export default function BuildingManagerPage() {
       {documentoAperto && (
         <FinestraDocumento id={documentoAperto} onChiudi={() => setDocumentoAperto(null)} />
       )}
+
+      {confermaCancellaLettera && campi.lettera && (
+        <ConfermaCodice
+          titolo="Cancellare la Lettera di attivazione?"
+          azione="Cancella la lettera"
+          onAnnulla={() => setConfermaCancellaLettera(false)}
+          onConferma={() => void cancellaLettera()}
+        >
+          <p>
+            Se ne vanno la lettera <b>{campi.lettera.nomeFile}</b>, i dati dell'incarico che ne derivano e{' '}
+            <b>tutti i suoi allegati</b>.
+          </p>
+          {campi.lettera.compendi.length > 1 ? (
+            <p className="mt-2">
+              Attenzione: questa lettera vale per <b>{campi.lettera.compendi.length} compendi</b>, quindi la
+              cancellazione <b>non riguarda solo {dati?.denominazione ?? "questo immobile"}</b> ma tutti gli
+              immobili su cui è stata registrata, per ogni anno dell'incarico.
+            </p>
+          ) : (
+            <p className="mt-2">
+              La cancellazione riguarda <b>{dati?.denominazione ?? "questo immobile"}</b>, per ogni anno
+              dell'incarico.
+            </p>
+          )}
+        </ConfermaCodice>
+      )}
+
+      {allegatoDaCancellare && (
+        <ConfermaCodice
+          titolo="Cancellare questo allegato?"
+          azione="Cancella l'allegato"
+          onAnnulla={() => setAllegatoDaCancellare(null)}
+          onConferma={() => void cancellaAllegato(allegatoDaCancellare)}
+        >
+          <p>
+            Se ne va <b>{allegatoDaCancellare.nome}</b> soltanto da{' '}
+            <b>{dati?.denominazione ?? "questo immobile"}</b>: sugli altri immobili della stessa lettera resta
+            dov'è. La lettera non viene toccata.
+          </p>
+        </ConfermaCodice>
+      )}
     </div>
+  )
+}
+
+/** Due registrazioni parlano della stessa lettera? */
+function stessaLettera(a: LetteraBM | null | undefined, b: LetteraBM): boolean {
+  if (!a) return false
+  if (a.documentoId && b.documentoId) return a.documentoId === b.documentoId
+  // lettere caricate prima che i file venissero conservati: si confronta il resto
+  return a.nomeFile === b.nomeFile && a.accordoNome === b.accordoNome
+}
+
+function IconaCestino() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
   )
 }
 
@@ -715,7 +850,16 @@ function estraiCampi(r: {
 }): DatiBM {
   const vuoto = datiBMVuoti()
   return {
-    lettera: r.lettera ?? null,
+    // le lettere registrate prima degli allegati non hanno quei campi: si
+    // rimettono a posto qui, altrimenti la pagina non riesce a disegnarsi
+    lettera: r.lettera
+      ? {
+          ...r.lettera,
+          compendi: Array.isArray(r.lettera.compendi) ? r.lettera.compendi : [],
+          allegati: Array.isArray(r.lettera.allegati) ? r.lettera.allegati : [],
+          documentoId: r.lettera.documentoId ?? null,
+        }
+      : null,
     fornitore: r.fornitore,
     nominativo: r.nominativo,
     recapito: r.recapito,
