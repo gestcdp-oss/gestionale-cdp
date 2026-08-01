@@ -213,6 +213,8 @@ export default function BuildingManagerPage() {
     setStato('in-corso')
 
     let registrati = 0
+    // per il messaggio finale: dove è finito ogni allegato
+    const riepilogo: { nome: string; id: string; asset: string; denominazione: string; anni: number[] }[] = []
     for (const scelto of scelti) {
       if (!scelto.immobile) continue
       // gli anni sono quelli della lettera DI QUELL'IMMOBILE: l'allegato vive
@@ -263,10 +265,33 @@ export default function BuildingManagerPage() {
         })
       }
       registrati++
+      riepilogo.push({
+        nome: scelto.file.name,
+        id: scelto.immobile.id,
+        asset: scelto.immobile.asset,
+        denominazione: scelto.immobile.denominazione,
+        anni,
+      })
     }
     setStato('salvato')
     void dbLocale.documenti.pulisci()
-    toast.ok(`${registrati} ${registrati === 1 ? 'allegato registrato' : 'allegati registrati'}.`)
+    // si dice sempre SU QUALE immobile sono finiti: la scheda intervento può
+    // riguardare un compendio diverso da quello aperto in questo momento
+    if (registrati > 0) {
+      const dettaglio = riepilogo
+        .map((r) => `${r.nome} → ${r.asset} ${r.denominazione} (${r.anni.join(', ')})`)
+        .join(' · ')
+      toast.ok(
+        `${registrati} ${registrati === 1 ? 'allegato registrato' : 'allegati registrati'}: ${dettaglio}`,
+      )
+      const altrove = riepilogo.filter((r) => r.id !== immobileId)
+      if (altrove.length > 0) {
+        toast.avviso(
+          `${altrove.length === 1 ? 'Un allegato riguarda' : `${altrove.length} allegati riguardano`} ` +
+            `${altrove.map((r) => r.denominazione).join(', ')}: per vederli apri quell'immobile.`,
+        )
+      }
+    }
     const { data } = await dbLocale.bm.get(immobileId, anno)
     setCampi(data ? estraiCampi(data) : datiBMVuoti())
   }
@@ -524,38 +549,69 @@ export default function BuildingManagerPage() {
                     </p>
                   )}
 
-                  <button
-                    onClick={() => setCaricaAllegati(true)}
-                    className="mt-3 rounded-lg border border-cielo-300 px-3 py-1.5 text-sm text-cielo-700 transition hover:bg-cielo-50"
-                  >
-                    Carica Allegati della lettera
-                  </button>
+                </div>
 
-                  {lettera.allegati.length > 0 && (
-                    <ul className="mt-3 space-y-1.5">
+                {/* ---- allegati di questa lettera, per QUESTO immobile ---- */}
+                <div className="mt-5 border-t border-cielo-200 pt-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="text-base font-semibold text-cielo-800">
+                      Allegati caricati
+                      {lettera.allegati.length > 0 && (
+                        <span className="ml-2 text-sm font-normal text-cielo-500">
+                          ({lettera.allegati.length}) per {dati?.denominazione ?? "questo immobile"}
+                        </span>
+                      )}
+                    </p>
+                    <button
+                      onClick={() => setCaricaAllegati(true)}
+                      className="rounded-lg border border-cielo-300 px-3 py-1.5 text-sm text-cielo-700 transition hover:bg-cielo-50"
+                    >
+                      Carica Allegati della lettera
+                    </button>
+                  </div>
+
+                  {lettera.allegati.length === 0 ? (
+                    <p className="mt-2 text-sm text-cielo-500">
+                      Nessun allegato caricato per questo immobile. Ogni scheda intervento riguarda un solo
+                      immobile: gli allegati degli altri compendi della lettera si vedono aprendo quegli
+                      immobili.
+                    </p>
+                  ) : (
+                    <ul className="mt-3 divide-y divide-cielo-100 rounded-xl border border-cielo-200 bg-panna">
                       {lettera.allegati.map((a) => (
-                        <li key={a.documentoId} className="flex flex-wrap items-center gap-2 text-sm">
-                          <button
-                            onClick={() => setDocumentoAperto(a.documentoId)}
-                            className="text-cielo-600 underline transition hover:text-cielo-800"
-                          >
-                            📎 {a.nome}
-                          </button>
-                          {a.classe && (
-                            <span className="rounded-full bg-cielo-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-cielo-600">
-                              classe {a.classe}
-                            </span>
-                          )}
-                          {a.importoTotale !== null && (
-                            <span className="text-xs text-cielo-500">{euro(a.importoTotale)}</span>
-                          )}
-                          <button
-                            onClick={() => setAllegatoDaCancellare(a)}
-                            title="Cancella questo allegato (solo per questo immobile)"
-                            className="flex h-6 w-6 items-center justify-center rounded-full text-cielo-400 transition hover:bg-red-50 hover:text-red-600"
-                          >
-                            <IconaCestino />
-                          </button>
+                        <li key={a.documentoId} className="px-3 py-2.5">
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <button
+                              onClick={() => setDocumentoAperto(a.documentoId)}
+                              title="Apri l'allegato in una finestra"
+                              className="min-w-0 flex-1 truncate text-left text-cielo-600 underline transition hover:text-cielo-800"
+                            >
+                              📎 {a.nome}
+                            </button>
+                            <button
+                              onClick={() => setAllegatoDaCancellare(a)}
+                              title="Cancella questo allegato (solo per questo immobile)"
+                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-cielo-400 transition hover:bg-red-50 hover:text-red-600"
+                            >
+                              <IconaCestino />
+                            </button>
+                          </div>
+                          {/* quello che è stato letto dalla scheda intervento */}
+                          <dl className="mt-2 grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                            <DatoAllegato etichetta="Sito" valore={[a.asset, a.sito].filter(Boolean).join(' · ')} />
+                            <DatoAllegato etichetta="Lotto" valore={a.lotto} />
+                            <DatoAllegato etichetta="Committente" valore={a.committente} />
+                            <DatoAllegato etichetta="Classe" valore={a.classe} />
+                            <DatoAllegato etichetta="Appaltatore" valore={a.appaltatore} />
+                            <DatoAllegato
+                              etichetta="Durata"
+                              valore={a.dal && a.al ? `dal ${italiana(a.dal)} al ${italiana(a.al)}` : null}
+                            />
+                            <DatoAllegato
+                              etichetta="Importo dell'intervento"
+                              valore={a.importoTotale === null ? null : euro(a.importoTotale)}
+                            />
+                          </dl>
                         </li>
                       ))}
                     </ul>
@@ -756,6 +812,18 @@ function stessaLettera(a: LetteraBM | null | undefined, b: LetteraBM): boolean {
   if (a.documentoId && b.documentoId) return a.documentoId === b.documentoId
   // lettere caricate prima che i file venissero conservati: si confronta il resto
   return a.nomeFile === b.nomeFile && a.accordoNome === b.accordoNome
+}
+
+/** Una riga dei dati letti dalla scheda intervento. */
+function DatoAllegato({ etichetta, valore }: { etichetta: string; valore: string | null }) {
+  return (
+    <div className="flex gap-2">
+      <dt className="shrink-0 font-semibold uppercase tracking-wide text-cielo-500">{etichetta}</dt>
+      <dd className={`min-w-0 flex-1 truncate ${valore ? 'text-cielo-700' : 'text-cielo-400'}`} title={valore ?? ''}>
+        {valore || '—'}
+      </dd>
+    </div>
+  )
 }
 
 function IconaCestino() {
