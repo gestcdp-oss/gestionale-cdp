@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { dbLocale } from '../lib/db'
+import { paragrafiDaDocx } from '../lib/documenti'
+import type { ParagrafoDocx } from '../lib/documenti'
 import Finestra from './Finestra'
 
 /**
@@ -9,12 +11,13 @@ import Finestra from './Finestra'
  */
 export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiudi: () => void }) {
   const [documento, setDocumento] = useState<{ nome: string; tipo: string; url: string } | null>(null)
+  const [pagine, setPagine] = useState<ParagrafoDocx[] | null>(null)
   const [errore, setErrore] = useState<string | null>(null)
 
   useEffect(() => {
     let vivo = true
     let daLiberare = ''
-    void dbLocale.documenti.apri(id).then(({ data, error }) => {
+    void dbLocale.documenti.apri(id).then(async ({ data, error }) => {
       if (!vivo) return
       if (error || !data) {
         setErrore(error?.message ?? 'Documento non trovato nell\'archivio.')
@@ -22,9 +25,19 @@ export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiu
       }
       // dal testo base64 si torna al file vero, senza passare da internet
       const byte = Uint8Array.from(atob(data.contenuto), (c) => c.charCodeAt(0))
-      const url = URL.createObjectURL(new Blob([byte], { type: data.tipo || 'application/pdf' }))
+      const blob = new Blob([byte], { type: data.tipo || 'application/pdf' })
+      const url = URL.createObjectURL(blob)
       daLiberare = url
       setDocumento({ nome: data.nome, tipo: data.tipo, url })
+      // i Word non si sfogliano come i PDF: se ne mostra il contenuto
+      if (eWord(data.nome, data.tipo)) {
+        try {
+          const p = await paragrafiDaDocx(blob)
+          if (vivo) setPagine(p)
+        } catch (e) {
+          if (vivo) setErrore(String((e as Error)?.message ?? e))
+        }
+      }
     })
     return () => {
       vivo = false
@@ -33,6 +46,7 @@ export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiu
   }, [id])
 
   const sfogliabile = Boolean(documento && /pdf/i.test(documento.tipo))
+  const daLeggere = Boolean(documento && eWord(documento.nome, documento.tipo))
 
   return (
     <Finestra
@@ -59,11 +73,35 @@ export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiu
         <p className="flex h-full items-center justify-center text-sm text-cielo-500">Apertura…</p>
       ) : sfogliabile ? (
         <iframe src={documento.url} title={documento.nome} className="h-full w-full border-0" />
+      ) : daLeggere ? (
+        pagine ? (
+          /* il Word viene mostrato come un foglio: testo, grassetti e centrature */
+          <div className="h-full overflow-y-auto bg-cielo-100 p-6">
+            <div className="mx-auto max-w-[46rem] rounded-lg bg-white p-10 shadow-sm">
+              {pagine.map((p, i) => (
+                <p
+                  key={i}
+                  className={`mb-3 text-[13px] leading-relaxed text-neutral-800 ${
+                    p.grassetto ? 'font-semibold' : ''
+                  } ${p.centrato ? 'text-center' : ''}`}
+                >
+                  {p.testo}
+                </p>
+              ))}
+              <p className="mt-6 border-t border-neutral-200 pt-3 text-[11px] text-neutral-400">
+                Contenuto del documento Word. Per vederlo con l'impaginazione originale, aprilo con Word dal
+                pulsante «Salva una copia».
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="flex h-full items-center justify-center text-sm text-cielo-500">Lettura del documento…</p>
+        )
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
           <p className="text-4xl">📄</p>
           <p className="text-sm text-cielo-700">
-            I documenti Word non si sfogliano qui dentro: aprilo con il programma del computer.
+            Questo tipo di file non si può mostrare qui: aprilo con il programma del computer.
           </p>
           <a
             href={documento.url}
@@ -76,6 +114,10 @@ export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiu
       )}
     </Finestra>
   )
+}
+
+function eWord(nome: string, tipo: string): boolean {
+  return /\.docx$/i.test(nome) || /wordprocessingml/i.test(tipo)
 }
 
 function IconaFoglio() {

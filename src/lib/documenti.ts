@@ -27,6 +27,35 @@ export async function testoDaDocx(file: File | Blob): Promise<string> {
   return righe.join('\n')
 }
 
+export type ParagrafoDocx = { testo: string; grassetto: boolean; centrato: boolean }
+
+/**
+ * Paragrafi di un .docx con un minimo di formattazione (grassetto e
+ * centratura): serve a mostrare il documento dentro il programma, visto che i
+ * Word non si possono sfogliare come i PDF.
+ */
+export async function paragrafiDaDocx(file: File | Blob): Promise<ParagrafoDocx[]> {
+  const { unzipSync } = await import('fflate')
+  const zip = unzipSync(new Uint8Array(await file.arrayBuffer()))
+  const documento = zip['word/document.xml']
+  if (!documento) throw new Error('Questo file Word non è leggibile: manca il documento interno.')
+  const xml = new TextDecoder('utf-8').decode(documento)
+
+  const paragrafi: ParagrafoDocx[] = []
+  for (const p of xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []) {
+    const pezzi = p.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) ?? []
+    const testo = decodifica(pezzi.map((x) => x.replace(/<[^>]+>/g, '')).join('')).trim()
+    if (!testo) continue
+    paragrafi.push({
+      testo,
+      // grassetto se quasi tutto il paragrafo lo è
+      grassetto: (p.match(/<w:b\s*\/>|<w:b\s+w:val="(?:1|true)"/g) ?? []).length > 0,
+      centrato: /<w:jc\s+w:val="center"/.test(p),
+    })
+  }
+  return paragrafi
+}
+
 function decodifica(s: string): string {
   return s
     .replace(/&lt;/g, '<')
