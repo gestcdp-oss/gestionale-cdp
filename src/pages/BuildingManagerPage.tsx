@@ -457,17 +457,11 @@ export default function BuildingManagerPage() {
                 <button
                   onClick={() => apriMappa(dati.localizzazione as string)}
                   title="Apri la mappa"
-                  className="rounded-full border border-cielo-300 bg-panna px-2 py-0.5 text-xs text-cielo-600 transition hover:bg-cielo-100 hover:text-cielo-800"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-cielo-500 transition hover:bg-cielo-100 hover:text-cielo-700"
                 >
-                  vedi sulla mappa
+                  <IconaMappamondo />
                 </button>
               )}
-              <Link
-                to="/immobile"
-                className="text-xs text-cielo-500 underline transition hover:text-cielo-700"
-              >
-                apri la scheda
-              </Link>
             </dd>
           </div>
         </dl>
@@ -871,6 +865,16 @@ function DatoAllegato({ etichetta, valore }: { etichetta: string; valore: string
         {valore || '—'}
       </dd>
     </div>
+  )
+}
+
+function IconaMappamondo() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
   )
 }
 
