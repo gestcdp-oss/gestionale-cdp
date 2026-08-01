@@ -619,6 +619,7 @@ export default function BuildingManagerPage() {
               categoria: data.categoria,
               accordoNome: data.lettera.accordoNome,
               nomeLettera: data.lettera.nomeFile,
+              compendi: data.lettera.compendi ?? [],
             }
           }}
           onAnnulla={() => setCaricaAllegati(false)}

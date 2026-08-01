@@ -153,6 +153,31 @@ export function leggiScheda(testoGrezzo: string): DatiScheda {
   return dati
 }
 
+function senzaZeri(asset: string): string {
+  return String(asset).trim().replace(/^0+/, '')
+}
+
+/**
+ * La denominazione della scheda e una riga della lettera parlano dello stesso
+ * compendio? Nella lettera la riga contiene anche l'indirizzo, perciò basta che
+ * le parole della denominazione ci siano tutte.
+ */
+export function stessoCompendio(rigaLettera: string, denominazione: string): boolean {
+  const chiavi = (s: string) =>
+    normalizza(s)
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9 ]/g, ' ')
+      .split(/\s+/)
+      .filter((p) => p.length > 2 && !['via', 'viale', 'piazza', 'corso', 'localita', 'loc', 'snc'].includes(p))
+  const cercate = chiavi(denominazione)
+  if (cercate.length === 0) return false
+  const dentro = new Set(chiavi(rigaLettera))
+  const trovate = cercate.filter((c) => dentro.has(c)).length
+  return trovate / cercate.length >= 0.7
+}
+
 /** Due nomi si somigliano abbastanza da essere la stessa cosa? */
 export function simili(a: string | null | undefined, b: string | null | undefined): boolean {
   const ripulisci = (s: string) =>
@@ -170,6 +195,12 @@ export function simili(a: string | null | undefined, b: string | null | undefine
 
 export type Incoerenza = { campo: string; nellaScheda: string; nellIncarico: string }
 
+/** "LOTTO 4 - Basilicata, Campania…" → "4" */
+export function numeroLotto(testo: string | null | undefined): string | null {
+  const m = String(testo ?? '').match(/LOTTO\s*n?\.?\s*(\d{1,3})/i)
+  return m ? m[1] : null
+}
+
 /**
  * Confronta la scheda con l'incarico già registrato dalla Lettera di
  * attivazione: se qualcosa non torna, l'allegato è di un altro incarico.
@@ -182,10 +213,56 @@ export function confrontaConIncarico(
     al: string | null
     portafoglio?: string | null
     categoria?: string | null
+    /** denominazione dell'accordo quadro scritta nella lettera */
+    accordoNome?: string | null
+    /** i compendi elencati nella lettera */
+    compendi?: string[]
+    /** l'immobile a cui l'allegato è stato abbinato */
+    assetImmobile?: string | null
+    denominazioneImmobile?: string | null
   },
 ): Incoerenza[] {
   const problemi: Incoerenza[] = []
   const dice = (v: string | null | undefined) => (v && v.trim() ? v.trim() : '(non indicato)')
+
+  // il numero di lotto della scheda dev'essere quello dell'accordo della lettera
+  const lottoScheda = numeroLotto(scheda.lotto)
+  const lottoLettera = numeroLotto(atteso.accordoNome)
+  if (lottoScheda && lottoLettera && lottoScheda !== lottoLettera) {
+    problemi.push({
+      campo: 'Lotto',
+      nellaScheda: `LOTTO ${lottoScheda}`,
+      nellIncarico: `LOTTO ${lottoLettera}`,
+    })
+  }
+
+  // la riga "0005 - TERRENI LOCALITA' SOCCAVO" deve essere uno dei compendi
+  // elencati nella lettera: è il controllo più stringente che si possa fare
+  if (scheda.sito && atteso.compendi && atteso.compendi.length > 0) {
+    const nelleRighe = atteso.compendi.some((c) => stessoCompendio(c, scheda.sito as string))
+    if (!nelleRighe) {
+      problemi.push({
+        campo: 'Compendio',
+        nellaScheda: scheda.sito,
+        nellIncarico:
+          atteso.compendi.length === 1
+            ? "non è il compendio elencato nella lettera"
+            : `non è fra i compendi elencati nella lettera (sono ${atteso.compendi.length})`,
+      })
+    }
+  }
+
+  // asset e denominazione della scheda devono essere quelli dell'immobile scelto
+  if (scheda.asset && atteso.assetImmobile && senzaZeri(scheda.asset) !== senzaZeri(atteso.assetImmobile)) {
+    problemi.push({ campo: 'Numero asset', nellaScheda: scheda.asset, nellIncarico: atteso.assetImmobile })
+  }
+  if (scheda.sito && atteso.denominazioneImmobile && !stessoCompendio(scheda.sito, atteso.denominazioneImmobile)) {
+    problemi.push({
+      campo: 'Denominazione',
+      nellaScheda: scheda.sito,
+      nellIncarico: atteso.denominazioneImmobile,
+    })
+  }
 
   if (scheda.appaltatore && atteso.fornitore && !simili(scheda.appaltatore, atteso.fornitore)) {
     problemi.push({ campo: 'Appaltatore', nellaScheda: scheda.appaltatore, nellIncarico: dice(atteso.fornitore) })

@@ -32,6 +32,8 @@ export type IncaricoDiRiferimento = {
   categoria: string | null
   accordoNome: string | null
   nomeLettera: string | null
+  /** i compendi elencati nella lettera di quell'immobile */
+  compendi: string[]
 } | null
 
 export default function CaricaAllegati({
@@ -269,6 +271,10 @@ async function verificaControLettera(
           dal: incarico.dal,
           al: incarico.al,
           categoria: incarico.categoria,
+          accordoNome: incarico.accordoNome,
+          compendi: incarico.compendi,
+          assetImmobile: immobile.asset,
+          denominazioneImmobile: immobile.denominazione,
         })
       : [],
     avvisoCommittente: avvisoCommittente(scheda, immobile),
