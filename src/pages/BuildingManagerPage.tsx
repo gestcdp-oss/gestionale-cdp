@@ -7,7 +7,7 @@ import { useImmobili } from '../hooks/useImmobili'
 import { useMappa } from '../hooks/useMappa'
 import { BIMESTRI, MESI_BREVI, STATI_AUTORIZZAZIONE, datiBMVuoti } from '../lib/tipi'
 import type { BimestreBM, DatiBM, Immobile, LetteraBM, AllegatoBM } from '../lib/tipi'
-import { giorniAlla } from '../lib/letteraAttivazione'
+import { giorniAlla, mesiDiIncarico } from '../lib/letteraAttivazione'
 import CaricaLettera, { italiana } from '../components/CaricaLettera'
 import type { EsitoLettera } from '../components/CaricaLettera'
 import CaricaAllegati from '../components/CaricaAllegati'
@@ -538,11 +538,7 @@ export default function BuildingManagerPage() {
                   />
                   <DatoLettera
                     etichetta="Durata"
-                    valore={
-                      campi.periodo_dal && campi.periodo_al
-                        ? `dal ${italiana(campi.periodo_dal)} al ${italiana(campi.periodo_al)}`
-                        : null
-                    }
+                    valore={durataPerEsteso(campi.periodo_dal, campi.periodo_al)}
                   />
                 </dl>
                 {/* il documento si riapre in una finestra dentro il programma */}
@@ -647,7 +643,7 @@ export default function BuildingManagerPage() {
                             <DatoAllegato etichetta="Appaltatore" valore={a.appaltatore} />
                             <DatoAllegato
                               etichetta="Durata"
-                              valore={a.dal && a.al ? `dal ${italiana(a.dal)} al ${italiana(a.al)}` : null}
+                              valore={durataPerEsteso(a.dal, a.al)}
                             />
                             <DatoAllegato
                               etichetta="Importo dell'intervento"
@@ -854,6 +850,13 @@ function stessaLettera(a: LetteraBM | null | undefined, b: LetteraBM): boolean {
   if (a.documentoId && b.documentoId) return a.documentoId === b.documentoId
   // lettere caricate prima che i file venissero conservati: si confronta il resto
   return a.nomeFile === b.nomeFile && a.accordoNome === b.accordoNome
+}
+
+/** "dal 01/01/2025 al 31/12/2026 (24 mesi)" */
+function durataPerEsteso(dal: string | null, al: string | null): string | null {
+  if (!dal || !al) return null
+  const mesi = mesiDiIncarico(dal, al)
+  return `dal ${italiana(dal)} al ${italiana(al)}${mesi ? ` (${mesi} ${mesi === 1 ? 'mese' : 'mesi'})` : ''}`
 }
 
 /** Una riga dei dati letti dalla scheda intervento. */

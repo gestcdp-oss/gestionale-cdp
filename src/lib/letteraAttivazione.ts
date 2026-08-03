@@ -250,6 +250,22 @@ export function cercaCorrispondenze<T extends { denominazione: string; localizza
   )
 }
 
+/**
+ * Durata dell'incarico in mesi. Il periodo è inclusivo — dal 1° gennaio al 31
+ * dicembre sono 12 mesi, non 11 — perciò si conta fino al giorno dopo la
+ * scadenza. Se non copre mesi interi si arrotonda per difetto.
+ */
+export function mesiDiIncarico(dal: string | null | undefined, al: string | null | undefined): number | null {
+  if (!dal || !al) return null
+  const inizio = new Date(`${dal}T00:00:00`)
+  const fine = new Date(`${al}T00:00:00`)
+  if (Number.isNaN(inizio.getTime()) || Number.isNaN(fine.getTime())) return null
+  fine.setDate(fine.getDate() + 1)
+  let mesi = (fine.getFullYear() - inizio.getFullYear()) * 12 + (fine.getMonth() - inizio.getMonth())
+  if (fine.getDate() < inizio.getDate()) mesi -= 1
+  return mesi > 0 ? mesi : null
+}
+
 /** Giorni che mancano alla data indicata (negativi se è già passata). */
 export function giorniAlla(data: string | null | undefined): number | null {
   if (!data) return null
