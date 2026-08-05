@@ -181,7 +181,9 @@ export default function BuildingManagerPage() {
     for (const im of bersagli) {
       for (const a of anni) {
         const { data: esistente } = await dbLocale.bm.get(im.id, a)
-        const base = esistente ? estraiCampi(esistente) : datiBMVuoti()
+        // se una lettera c'era già, quel che è stato tracciato resta; se invece
+        // la scheda veniva dal vecchio monitoraggio si riparte puliti
+        const base = esistente?.lettera ? estraiCampi(esistente) : datiBMVuoti()
         const { error } = await dbLocale.bm.salva(im.id, a, {
           ...base,
           lettera,
@@ -340,9 +342,10 @@ export default function BuildingManagerPage() {
     setStato('in-corso')
     const { data: incarichi } = await dbLocale.bm.tutti()
     const coinvolti = (incarichi ?? []).filter((i) => stessaLettera(i.lettera, daTogliere))
+    // la scheda se ne va tutta: senza lettera non resta niente di valido, e i
+    // conteggi dei report non devono ricomparire alla prossima lettera
     for (const i of coinvolti) {
-      const base = estraiCampi(i)
-      await dbLocale.bm.salva(i.immobile_id, i.anno, { ...base, lettera: null })
+      await dbLocale.bm.rimuovi(i.immobile_id, i.anno)
     }
     void dbLocale.documenti.pulisci()
     setStato('fermo')
@@ -431,6 +434,8 @@ export default function BuildingManagerPage() {
   // non ha senso perché non si sa quanti chiederne
   const classeImmobile = lettera?.allegati.find((a) => a.classe)?.classe ?? null
   const attesiAlMese = campi.reportAttesi ?? reportAttesiPerClasse(classeImmobile)
+  // i certificati di avvenuta prestazione: l'elenco c'è, la generazione arriva
+  const certificati: { id: string; nome: string; generatoIl: string }[] = []
   const reportConsegnati = campi.report.reduce((s, n) => s + Math.min(n ?? 0, attesiAlMese), 0)
   const anniElenco = Array.from(new Set([ANNO_CORRENTE, ANNO_CORRENTE + 1, ANNO_CORRENTE - 1, ...anni])).sort(
     (a, b) => b - a,
@@ -756,6 +761,41 @@ export default function BuildingManagerPage() {
                   )
                 })}
               </div>
+
+              {/* ---- certificati di avvenuta prestazione ---- */}
+              <div className="mt-5 border-t border-cielo-200 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-base font-semibold text-cielo-800">Certificati</p>
+                  <button
+                    onClick={() =>
+                      toast.avviso(
+                        'La generazione del certificato è in preparazione: definiamo insieme cosa deve contenere.',
+                      )
+                    }
+                    className="flex items-center gap-2 rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
+                  >
+                    <IconaCertificato />
+                    Genera Certificato
+                  </button>
+                </div>
+
+                {certificati.length === 0 ? (
+                  <p className="mt-2 text-sm text-cielo-500">
+                    Nessun certificato generato per questo immobile.
+                  </p>
+                ) : (
+                  <ul className="mt-3 divide-y divide-cielo-100 rounded-xl border border-cielo-200 bg-panna">
+                    {certificati.map((c) => (
+                      <li key={c.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                        <span className="min-w-0 flex-1 truncate text-cielo-800">{c.nome}</span>
+                        <span className="shrink-0 text-xs text-cielo-500">
+                          {new Date(c.generatoIl).toLocaleDateString('it-IT')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </section>
           ) : (
             <section className="rounded-2xl border border-cielo-200 bg-panna p-6">
@@ -829,8 +869,8 @@ export default function BuildingManagerPage() {
           onConferma={() => void cancellaLettera()}
         >
           <p>
-            Se ne vanno la lettera <b>{campi.lettera.nomeFile}</b>, i dati dell'incarico che ne derivano e{' '}
-            <b>tutti i suoi allegati</b>.
+            Se ne va tutto quello che dipende dalla lettera <b>{campi.lettera.nomeFile}</b>: i dati
+            dell'incarico, <b>tutti i suoi allegati</b> e la <b>traccia dei report consegnati</b>.
           </p>
           {campi.lettera.compendi.length > 1 ? (
             <p className="mt-2">
@@ -898,6 +938,17 @@ function IconaMappamondo() {
       <circle cx="12" cy="12" r="10" />
       <path d="M2 12h20" />
       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  )
+}
+
+function IconaCertificato() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6" />
+      <path d="M8 7h7M8 11h5" />
+      <circle cx="17.5" cy="15.5" r="3.5" />
+      <path d="M15.5 18.5 15 22l2.5-1.4L20 22l-.5-3.5" />
     </svg>
   )
 }
