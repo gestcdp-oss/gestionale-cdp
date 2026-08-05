@@ -3,6 +3,7 @@ import { testoDaDocumento } from '../lib/documenti'
 import { cercaCorrispondenze, leggiLettera } from '../lib/letteraAttivazione'
 import type { Candidato, DatiLettera } from '../lib/letteraAttivazione'
 import type { Immobile } from '../lib/tipi'
+import Avanzamento from './Avanzamento'
 
 /**
  * Procedura guidata per la Lettera di attivazione: si carica il PDF, si
@@ -37,6 +38,8 @@ export default function CaricaLettera({
   const [dati, setDati] = useState<DatiLettera | null>(null)
   const [nomeFile, setNomeFile] = useState('')
   const [fileScelto, setFileScelto] = useState<File | null>(null)
+  // finché il documento si legge, davanti resta la barra di avanzamento
+  const [attesa, setAttesa] = useState<{ testo: string; percentuale: number } | null>(null)
   const [indice, setIndice] = useState(0)
   // per ogni riga della lettera: l'immobile scelto (o null = "non è dei nostri")
   const [scelte, setScelte] = useState<(Immobile | null)[]>([])
@@ -46,8 +49,10 @@ export default function CaricaLettera({
     setPasso('lettura')
     setNomeFile(file.name)
     setFileScelto(file)
+    setAttesa({ testo: `Lettura di ${file.name}`, percentuale: 20 })
     try {
       const testo = await testoDaDocumento(file)
+      setAttesa({ testo: 'Ricerca dei dati nella lettera', percentuale: 70 })
       if (testo.replace(/\s/g, '').length < 200) {
         throw new Error(
           "Da questo file non si riesce a leggere il testo: se è un PDF, probabilmente è la scansione di un foglio e serve l'originale.",
@@ -66,6 +71,8 @@ export default function CaricaLettera({
     } catch (e) {
       setErrore(String((e as Error)?.message ?? e))
       setPasso('errore')
+    } finally {
+      setAttesa(null)
     }
   }
 
@@ -99,6 +106,11 @@ export default function CaricaLettera({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-velo p-4">
+      {attesa && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
+          <Avanzamento testo={attesa.testo} percentuale={attesa.percentuale} />
+        </div>
+      )}
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-cielo-200 bg-panna p-6 shadow-xl">
         {/* ---------- scelta del file ---------- */}
         {passo === 'lettura' && (

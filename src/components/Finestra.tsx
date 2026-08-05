@@ -93,7 +93,9 @@ export default function Finestra({
           </span>
         </div>
 
-        <div className="relative flex-1 bg-cielo-50">
+        {/* min-h-0 è quello che permette al contenuto lungo di scorrere
+            invece di allungare la finestra */}
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-cielo-50">
           {children}
           {trascino && <div className="absolute inset-0" />}
         </div>

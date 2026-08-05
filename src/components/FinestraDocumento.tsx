@@ -1,13 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { dbLocale } from '../lib/db'
-import { paragrafiDaDocx } from '../lib/documenti'
-import type { ParagrafoDocx } from '../lib/documenti'
 import Finestra from './Finestra'
+import Avanzamento from './Avanzamento'
 
 /**
  * Mostra un documento dell'archivio (la lettera o un allegato) in una finestra
- * trascinabile dentro la pagina. I PDF si sfogliano direttamente; per gli altri
- * formati resta il pulsante per aprirli con il programma del computer.
+ * trascinabile dentro la pagina. I PDF si sfogliano direttamente; i Word vengono
+ * impaginati con i loro stili veri, così si vedono come li mostra Word.
  */
 export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiudi: () => void }) {
   const [documento, setDocumento] = useState<{
@@ -17,39 +16,74 @@ export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiu
     tipo: string
     url: string
   } | null>(null)
-  const [pagine, setPagine] = useState<ParagrafoDocx[] | null>(null)
   const [errore, setErrore] = useState<string | null>(null)
+  // a che punto è l'apertura: serve per la barra di avanzamento
+  const [fase, setFase] = useState<{ testo: string; percentuale: number } | null>({
+    testo: 'Apertura del documento',
+    percentuale: 5,
+  })
+  const foglio = useRef<HTMLDivElement | null>(null)
+  // gli stili del Word vanno in un contenitore tutto loro: se finiscono
+  // insieme al testo, l'impaginazione li cancella e il documento si imbruttisce
+  const stili = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     let vivo = true
     let daLiberare = ''
-    void dbLocale.documenti.apri(id).then(async ({ data, error }) => {
-      if (!vivo) return
-      if (error || !data) {
-        setErrore(error?.message ?? 'Documento non trovato nell\'archivio.')
-        return
-      }
-      // dal testo base64 si torna al file vero, senza passare da internet
-      const byte = Uint8Array.from(atob(data.contenuto), (c) => c.charCodeAt(0))
-      const blob = new Blob([byte], { type: data.tipo || 'application/pdf' })
-      const url = URL.createObjectURL(blob)
-      daLiberare = url
-      setDocumento({
-        nome: data.nome,
-        nomeArchivio: data.nomeArchivio || data.nome,
-        tipo: data.tipo,
-        url,
-      })
-      // i Word non si sfogliano come i PDF: se ne mostra il contenuto
-      if (eWord(data.nome, data.tipo)) {
-        try {
-          const p = await paragrafiDaDocx(blob)
-          if (vivo) setPagine(p)
-        } catch (e) {
-          if (vivo) setErrore(String((e as Error)?.message ?? e))
+    void (async () => {
+      try {
+        setFase({ testo: 'Lettura dall\'archivio', percentuale: 15 })
+        const { data, error } = await dbLocale.documenti.apri(id)
+        if (!vivo) return
+        if (error || !data) {
+          setErrore(error?.message ?? 'Documento non trovato nell\'archivio.')
+          setFase(null)
+          return
+        }
+
+        setFase({ testo: 'Ricostruzione del file', percentuale: 40 })
+        // dal testo base64 si torna al file vero, senza passare da internet
+        const byte = Uint8Array.from(atob(data.contenuto), (c) => c.charCodeAt(0))
+        const blob = new Blob([byte], { type: data.tipo || 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        daLiberare = url
+        if (!vivo) return
+        setDocumento({
+          nome: data.nome,
+          nomeArchivio: data.nomeArchivio || data.nome,
+          tipo: data.tipo,
+          url,
+        })
+
+        if (eWord(data.nome, data.tipo)) {
+          // il Word si impagina qui dentro, con font, margini, tabelle e immagini
+          setFase({ testo: 'Impaginazione del documento Word', percentuale: 65 })
+          const { renderAsync } = await import('docx-preview')
+          // il contenitore compare col giro di disegno seguente: lo si attende
+          // senza legarsi al disegno vero, se no in una scheda lasciata da parte
+          // l'impaginazione non partirebbe mai
+          for (let giro = 0; giro < 40 && !foglio.current; giro++) {
+            await new Promise((r) => setTimeout(r, 25))
+          }
+          if (!vivo || !foglio.current || !stili.current) return
+          setFase({ testo: 'Impaginazione del documento Word', percentuale: 85 })
+          await renderAsync(blob, foglio.current, stili.current, {
+            className: 'docx',
+            inWrapper: true,
+            breakPages: true,
+            ignoreLastRenderedPageBreak: true,
+            experimental: true,
+            useBase64URL: true,
+          })
+        }
+        if (vivo) setFase(null)
+      } catch (e) {
+        if (vivo) {
+          setErrore(String((e as Error)?.message ?? e))
+          setFase(null)
         }
       }
-    })
+    })()
     return () => {
       vivo = false
       if (daLiberare) URL.revokeObjectURL(daLiberare)
@@ -57,13 +91,13 @@ export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiu
   }, [id])
 
   const sfogliabile = Boolean(documento && /pdf/i.test(documento.tipo))
-  const daLeggere = Boolean(documento && eWord(documento.nome, documento.tipo))
+  const daImpaginare = Boolean(documento && eWord(documento.nome, documento.tipo))
 
   return (
     <Finestra
       titolo={documento?.nome ?? 'Documento'}
-      larghezza={860}
-      altezza={620}
+      larghezza={880}
+      altezza={640}
       onChiudi={onChiudi}
       icona={<IconaFoglio />}
       azioni={
@@ -81,47 +115,43 @@ export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiu
     >
       {errore ? (
         <p className="flex h-full items-center justify-center p-6 text-center text-sm text-red-700">{errore}</p>
-      ) : !documento ? (
-        <p className="flex h-full items-center justify-center text-sm text-cielo-500">Apertura…</p>
-      ) : sfogliabile ? (
-        <iframe src={documento.url} title={documento.nome} className="h-full w-full border-0" />
-      ) : daLeggere ? (
-        pagine ? (
-          /* il Word viene mostrato come un foglio: testo, grassetti e centrature */
-          <div className="h-full overflow-y-auto bg-cielo-100 p-6">
-            <div className="mx-auto max-w-[46rem] rounded-lg bg-white p-10 shadow-sm">
-              {pagine.map((p, i) => (
-                <p
-                  key={i}
-                  className={`mb-3 text-[13px] leading-relaxed text-neutral-800 ${
-                    p.grassetto ? 'font-semibold' : ''
-                  } ${p.centrato ? 'text-center' : ''}`}
-                >
-                  {p.testo}
-                </p>
-              ))}
-              <p className="mt-6 border-t border-neutral-200 pt-3 text-[11px] text-neutral-400">
-                Contenuto del documento Word. Per vederlo con l'impaginazione originale, aprilo con Word dal
-                pulsante «Salva una copia».
-              </p>
-            </div>
-          </div>
-        ) : (
-          <p className="flex h-full items-center justify-center text-sm text-cielo-500">Lettura del documento…</p>
-        )
       ) : (
-        <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-          <p className="text-4xl">📄</p>
-          <p className="text-sm text-cielo-700">
-            Questo tipo di file non si può mostrare qui: aprilo con il programma del computer.
-          </p>
-          <a
-            href={documento.url}
-            download={documento.nomeArchivio}
-            className="rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
-          >
-            Apri {documento.nome}
-          </a>
+        <div className="relative h-full">
+          {sfogliabile && (
+            <iframe src={documento!.url} title={documento!.nome} className="h-full w-full border-0" />
+          )}
+
+          {/* il foglio del Word: resta montato perché l'impaginazione ci scrive dentro */}
+          {daImpaginare && (
+            <>
+              <div ref={stili} className="hidden" />
+              <div className="h-full overflow-auto">
+                <div ref={foglio} />
+              </div>
+            </>
+          )}
+
+          {fase && (
+            <div className="absolute inset-0 flex items-center justify-center bg-panna/90">
+              <Avanzamento testo={fase.testo} percentuale={fase.percentuale} />
+            </div>
+          )}
+
+          {!fase && documento && !sfogliabile && !daImpaginare && (
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+              <p className="text-4xl">📄</p>
+              <p className="text-sm text-cielo-700">
+                Questo tipo di file non si può mostrare qui: aprilo con il programma del computer.
+              </p>
+              <a
+                href={documento.url}
+                download={documento.nomeArchivio}
+                className="rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
+              >
+                Apri {documento.nome}
+              </a>
+            </div>
+          )}
         </div>
       )}
     </Finestra>
@@ -129,7 +159,7 @@ export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiu
 }
 
 function eWord(nome: string, tipo: string): boolean {
-  return /\.docx$/i.test(nome) || /wordprocessingml/i.test(tipo)
+  return /\.docx?$/i.test(nome) || /wordprocessingml|msword/i.test(tipo)
 }
 
 function IconaFoglio() {
