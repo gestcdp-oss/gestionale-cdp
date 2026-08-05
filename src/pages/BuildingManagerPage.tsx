@@ -7,6 +7,7 @@ import { useImmobili } from '../hooks/useImmobili'
 import { useMappa } from '../hooks/useMappa'
 import {
   BIMESTRI,
+  MESI,
   MESI_BREVI,
   STATI_AUTORIZZAZIONE,
   datiBMVuoti,
@@ -21,6 +22,7 @@ import CaricaAllegati from '../components/CaricaAllegati'
 import type { FileAnalizzato } from '../components/CaricaAllegati'
 import FinestraDocumento from '../components/FinestraDocumento'
 import ConfermaCodice from '../components/ConfermaCodice'
+import Conferma from '../components/Conferma'
 import GeneraCertificato from '../components/GeneraCertificato'
 import { pdfDaRighe } from '../lib/pdfSemplice'
 import { nomeUnivoco } from '../lib/nomiFile'
@@ -539,6 +541,8 @@ export default function BuildingManagerPage() {
   const classeImmobile = lettera?.allegati.find((a) => a.classe)?.classe ?? null
   const attesiAlMese = campi.reportAttesi ?? reportAttesiPerClasse(classeImmobile)
   const certificati = campi.certificati ?? []
+  // i mesi già finiti in un certificato: si riconoscono dalla pergamena
+  const mesiCertificati = new Set(certificati.flatMap((c) => c.mesi))
   const reportConsegnati = campi.report.reduce((s, n) => s + Math.min(n ?? 0, attesiAlMese), 0)
   const anniElenco = Array.from(new Set([ANNO_CORRENTE, ANNO_CORRENTE + 1, ANNO_CORRENTE - 1, ...anni])).sort(
     (a, b) => b - a,
@@ -830,13 +834,23 @@ export default function BuildingManagerPage() {
                 {MESI_BREVI.map((mese, i) => {
                   const fatti = campi.report[i] ?? 0
                   const completo = fatti >= attesiAlMese
+                  const certificato = mesiCertificati.has(i + 1)
                   return (
                     <div
                       key={mese}
-                      className={`w-16 rounded-lg border p-1.5 text-center transition ${
+                      className={`relative w-16 rounded-lg border p-1.5 text-center transition ${
                         completo ? 'border-emerald-300 bg-emerald-50' : 'border-cielo-200 bg-white'
                       }`}
                     >
+                      {/* la pergamena dice che il mese è già finito in un certificato */}
+                      {certificato && (
+                        <span
+                          title={`${MESI[i]}: incluso in un Certificato di Avvenuta Prestazione`}
+                          className="absolute -right-1 -top-1.5 text-[13px] leading-none drop-shadow-sm"
+                        >
+                          📜
+                        </span>
+                      )}
                       <span
                         className={`block text-xs font-semibold uppercase tracking-wide ${
                           completo ? 'text-emerald-800' : 'text-cielo-500'
@@ -849,7 +863,7 @@ export default function BuildingManagerPage() {
                           <button
                             key={n}
                             onClick={() => segnaReport(i, n)}
-                            title={`${mese}: ${n + 1}° report ${fatti > n ? 'consegnato' : 'da consegnare'}`}
+                            title={`${MESI[i]}: ${n + 1}° report ${fatti > n ? 'consegnato' : 'da consegnare'}`}
                             className={`h-6 w-6 rounded border text-xs font-bold transition ${
                               fatti > n
                                 ? 'border-emerald-400 bg-emerald-500 text-white'
@@ -1031,7 +1045,7 @@ export default function BuildingManagerPage() {
       )}
 
       {certificatoDaCancellare && (
-        <ConfermaCodice
+        <Conferma
           titolo="Cancellare questo certificato?"
           azione="Cancella il certificato"
           onAnnulla={() => setCertificatoDaCancellare(null)}
@@ -1042,7 +1056,7 @@ export default function BuildingManagerPage() {
             file PDF. I report consegnati restano segnati: dopo la cancellazione potrai generarne uno nuovo per
             quegli stessi mesi.
           </p>
-        </ConfermaCodice>
+        </Conferma>
       )}
 
       {allegatoDaCancellare && (

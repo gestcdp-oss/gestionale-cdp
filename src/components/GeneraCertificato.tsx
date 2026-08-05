@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Finestra from './Finestra'
-import { MESI_BREVI } from '../lib/tipi'
+import { MESI, MESI_BREVI, mesiPerEsteso } from '../lib/tipi'
 import type { CertificatoBM } from '../lib/tipi'
 
 /**
@@ -98,10 +98,10 @@ export default function GeneraCertificato({
                     onClick={() => commuta(numero)}
                     title={
                       !completo
-                        ? `${mese}: report incompleti (${report[i] ?? 0} su ${attesiAlMese})`
+                        ? `${MESI[i]}: report incompleti (${report[i] ?? 0} su ${attesiAlMese})`
                         : certificato
-                          ? `${mese}: certificato già generato`
-                          : `${mese}: pronto`
+                          ? `${MESI[i]}: certificato già generato`
+                          : `${MESI[i]}: pronto`
                     }
                     className={`h-14 w-20 rounded-lg border-2 text-sm font-semibold transition ${stile}`}
                   >
@@ -117,9 +117,8 @@ export default function GeneraCertificato({
             {bloccato && (
               <div className="mt-5 rounded-xl border-2 border-red-300 bg-red-50 p-4 text-sm text-red-800">
                 <b>Non si può proseguire.</b> Per{' '}
-                {sceltiGiaCertificati.map((m) => MESI_BREVI[m - 1]).join(', ')} esiste già un certificato di
-                questa lettera: non è possibile generarne un altro per lo stesso mese. Cancella prima quello
-                che c'è e rifallo.
+                <b>{mesiPerEsteso(sceltiGiaCertificati)}</b> esiste già un certificato di questa lettera: non
+                è possibile generarne un altro per lo stesso mese. Cancella prima quello che c'è e rifallo.
               </div>
             )}
 
@@ -127,9 +126,9 @@ export default function GeneraCertificato({
               <span className="text-sm text-cielo-600">
                 {scelti.length === 0
                   ? 'Nessun mese scelto'
-                  : `${scelti.length} ${scelti.length === 1 ? 'mese scelto' : 'mesi scelti'}: ${scelti
-                      .map((m) => MESI_BREVI[m - 1])
-                      .join(', ')}`}
+                  : `${scelti.length} ${scelti.length === 1 ? 'mese scelto' : 'mesi scelti'}: ${mesiPerEsteso(
+                      scelti,
+                    )}`}
               </span>
               <span className="flex gap-3">
                 <button
