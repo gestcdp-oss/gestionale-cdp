@@ -1054,7 +1054,14 @@ function normalizzaBM(campi: Partial<DatiBM>): DatiBM {
     periodo_al: pulisci(campi.periodo_al),
     fabbisogno: numeroOppureNulla(campi.fabbisogno),
     call_off: pulisci(campi.call_off),
-    report: Array.from({ length: 12 }, (_, i) => Boolean(report[i])),
+    // i vecchi archivi tenevano una spunta per mese: vale come un report
+    report: Array.from({ length: 12 }, (_, i) => {
+      const v = report[i] as unknown
+      if (typeof v === 'boolean') return v ? 1 : 0
+      const n = Number(v)
+      return Number.isFinite(n) && n > 0 ? Math.min(9, Math.round(n)) : 0
+    }),
+    reportAttesi: numeroOppureNulla(campi.reportAttesi),
     bimestri: BIMESTRI.map((_, i) => {
       const b = bimestri[i] ?? bimestreVuoto()
       return {

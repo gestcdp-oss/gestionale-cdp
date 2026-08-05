@@ -90,8 +90,10 @@ export type IncaricoBM = {
   fabbisogno: number | null
   /** call off dell'anno */
   call_off: string | null
-  /** consegna del report mensile: dodici caselle, da gennaio a dicembre */
-  report: boolean[]
+  /** report consegnati mese per mese: dodici numeri (0, 1 o 2) */
+  report: number[]
+  /** quanti report al mese deve consegnare il fornitore (dalla classe) */
+  reportAttesi: number | null
   /** sei bimestri di fatturazione */
   bimestri: BimestreBM[]
   /** stato di servizio del primo e del secondo semestre */
@@ -108,6 +110,14 @@ export type IncaricoBM = {
 export type DatiBM = Omit<IncaricoBM, 'id' | 'immobile_id' | 'anno' | 'aggiornato_il'>
 
 export const MESI_BREVI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic']
+
+/**
+ * Report attesi ogni mese secondo la classe dell'immobile: gli immobili di
+ * classe A ne richiedono due, gli altri uno. Resta modificabile dalla pagina.
+ */
+export function reportAttesiPerClasse(classe: string | null | undefined): number {
+  return String(classe ?? '').trim().toUpperCase() === 'A' ? 2 : 1
+}
 
 /** Stati dell'autorizzazione alla fatturazione: vuoto significa "non ancora". */
 export const STATI_AUTORIZZAZIONE = ['ok', 'inviare']
@@ -136,7 +146,8 @@ export function datiBMVuoti(): DatiBM {
     periodo_al: null,
     fabbisogno: null,
     call_off: null,
-    report: Array(12).fill(false),
+    report: Array(12).fill(0),
+    reportAttesi: null,
     bimestri: BIMESTRI.map(() => bimestreVuoto()),
     sds1: null,
     sds2: null,

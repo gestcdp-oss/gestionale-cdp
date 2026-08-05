@@ -129,6 +129,7 @@ function apriDb(nomeFile = 'travi.db') {
       report_json   text,
       bimestri_json text,
       lettera_json  text,
+      report_attesi integer,
       sds1          text,
       sds2          text,
       svincolo_id   text,
@@ -153,6 +154,7 @@ function apriDb(nomeFile = 'travi.db') {
   if (!colonne.includes('regione')) db.exec('alter table immobili add column regione text')
   const colonneBm = db.prepare('pragma table_info(bm)').all().map((c) => c.name)
   if (!colonneBm.includes('lettera_json')) db.exec('alter table bm add column lettera_json text')
+  if (!colonneBm.includes('report_attesi')) db.exec('alter table bm add column report_attesi integer')
   seminaSeServe()
 }
 
@@ -546,7 +548,13 @@ function bmDaRiga(r) {
     periodo_al: r.periodo_al,
     fabbisogno: r.fabbisogno === null || r.fabbisogno === undefined ? null : Number(r.fabbisogno),
     call_off: r.call_off,
-    report: Array.from({ length: 12 }, (_, i) => Boolean(report[i])),
+    report: Array.from({ length: 12 }, (_, i) => {
+      const v = report[i]
+      if (typeof v === 'boolean') return v ? 1 : 0
+      const n = Number(v)
+      return Number.isFinite(n) && n > 0 ? Math.min(9, Math.round(n)) : 0
+    }),
+    reportAttesi: r.report_attesi === null || r.report_attesi === undefined ? null : Number(r.report_attesi),
     bimestri: Array.from({ length: 6 }, (_, i) => ({
       idBem: bimestri[i]?.idBem ?? null,
       importo: bimestri[i]?.importo ?? null,
@@ -582,7 +590,12 @@ ipcMain.handle('bm:salva', (_ev, { immobileId, anno, campi }) =>
     const a = Number(anno)
     if (!Number.isFinite(a)) throw new Error('Anno non valido.')
     const c = campi || {}
-    const report = Array.from({ length: 12 }, (_, i) => Boolean((c.report || [])[i]))
+    const report = Array.from({ length: 12 }, (_, i) => {
+      const v = (c.report || [])[i]
+      if (typeof v === 'boolean') return v ? 1 : 0
+      const n = Number(v)
+      return Number.isFinite(n) && n > 0 ? Math.min(9, Math.round(n)) : 0
+    })
     const bimestri = Array.from({ length: 6 }, (_, i) => {
       const b = (c.bimestri || [])[i] || {}
       return {
@@ -605,6 +618,7 @@ ipcMain.handle('bm:salva', (_ev, { immobileId, anno, campi }) =>
       pulisci(c.call_off),
       JSON.stringify(report),
       JSON.stringify(bimestri),
+      numeroOppureNulla(c.reportAttesi),
       pulisci(c.sds1),
       pulisci(c.sds2),
       pulisci(c.svincolo_id),
@@ -615,7 +629,7 @@ ipcMain.handle('bm:salva', (_ev, { immobileId, anno, campi }) =>
       db.prepare(
         `update bm set lettera_json = ?, fornitore = ?, nominativo = ?, recapito = ?, categoria = ?, periodo_dal = ?,
                        periodo_al = ?, fabbisogno = ?, call_off = ?, report_json = ?, bimestri_json = ?,
-                       sds1 = ?, sds2 = ?, svincolo_id = ?, svincolo_aut = ?, note = ?,
+                       report_attesi = ?, sds1 = ?, sds2 = ?, svincolo_id = ?, svincolo_aut = ?, note = ?,
                        aggiornato_il = datetime('now')
          where id = ?`,
       ).run(...valori, esistente.id)

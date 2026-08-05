@@ -5,7 +5,7 @@ import { useSelezione } from '../hooks/useSelezione'
 import { useToast } from '../hooks/useToast'
 import { useImmobili } from '../hooks/useImmobili'
 import { useMappa } from '../hooks/useMappa'
-import { BIMESTRI, MESI_BREVI, STATI_AUTORIZZAZIONE, datiBMVuoti } from '../lib/tipi'
+import { BIMESTRI, MESI_BREVI, STATI_AUTORIZZAZIONE, datiBMVuoti, reportAttesiPerClasse } from '../lib/tipi'
 import type { BimestreBM, DatiBM, Immobile, LetteraBM, AllegatoBM } from '../lib/tipi'
 import { giorniAlla, mesiDiIncarico } from '../lib/letteraAttivazione'
 import CaricaLettera, { italiana } from '../components/CaricaLettera'
@@ -85,6 +85,13 @@ export default function BuildingManagerPage() {
       programmaSalvataggio(nuovo)
       return nuovo
     })
+  }
+
+  /** Clic sull'ennesima casella del mese: consegnati = n+1, oppure n se già segnata. */
+  function segnaReport(mese: number, casella: number) {
+    const fatti = campi.report[mese] ?? 0
+    const nuovo = fatti > casella ? casella : casella + 1
+    modifica({ report: campi.report.map((v, i) => (i === mese ? nuovo : v)) })
   }
 
   function modificaBimestre(indice: number, cambio: Partial<BimestreBM>) {
@@ -395,7 +402,11 @@ export default function BuildingManagerPage() {
   // "in corso di validità": la scadenza non è ancora passata
   const letteraValida = Boolean(lettera) && (giorniAllaScadenza === null || giorniAllaScadenza >= 0)
   const totaleBimestri = campi.bimestri.reduce((s, b) => s + (b.importo ?? 0), 0)
-  const reportConsegnati = campi.report.filter(Boolean).length
+  // la classe arriva dalla scheda intervento; se manca, la sezione dei report
+  // non ha senso perché non si sa quanti chiederne
+  const classeImmobile = lettera?.allegati.find((a) => a.classe)?.classe ?? null
+  const attesiAlMese = campi.reportAttesi ?? reportAttesiPerClasse(classeImmobile)
+  const reportConsegnati = campi.report.reduce((s, n) => s + Math.min(n ?? 0, attesiAlMese), 0)
   const anniElenco = Array.from(new Set([ANNO_CORRENTE, ANNO_CORRENTE + 1, ANNO_CORRENTE - 1, ...anni])).sort(
     (a, b) => b - a,
   )
@@ -506,6 +517,7 @@ export default function BuildingManagerPage() {
               <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">
                 Lettera di attivazione
               </h2>
+              <Scadenza giorni={giorniAllaScadenza} scadenza={campi.periodo_al} />
 
             </div>
 
@@ -655,84 +667,82 @@ export default function BuildingManagerPage() {
             )}
           </section>
 
-          {/* ---------- incarico ---------- */}
-          <section className="rounded-2xl border border-cielo-200 bg-panna p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">Incarico {anno}</h2>
-              <Scadenza giorni={giorniAllaScadenza} scadenza={campi.periodo_al} />
-            </div>
-            {inScadenza && giorniAllaScadenza !== null && giorniAllaScadenza >= 0 && (
-              <p className="mt-3 flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">
-                <IconaCampanella />
-                Attenzione, incarico in scadenza tra {giorniAllaScadenza}{' '}
-                {giorniAllaScadenza === 1 ? 'giorno' : 'giorni'} ({italiana(campi.periodo_al)}).
-              </p>
-            )}
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Campo
-                etichetta="Fornitore"
-                valore={campi.fornitore}
-                onCambia={(v) => modifica({ fornitore: v })}
-                suggerimenti="fornitori-bm"
-              />
-              <Campo
-                etichetta="Nominativo BM"
-                valore={campi.nominativo}
-                onCambia={(v) => modifica({ nominativo: v })}
-              />
-              <Campo etichetta="Recapito" valore={campi.recapito} onCambia={(v) => modifica({ recapito: v })} />
-              <Scelta
-                etichetta="Categoria"
-                valore={campi.categoria}
-                opzioni={['A', 'B', 'C']}
-                onCambia={(v) => modifica({ categoria: v })}
-              />
-              <Campo
-                etichetta="Incarico dal"
-                tipo="date"
-                valore={campi.periodo_dal}
-                onCambia={(v) => modifica({ periodo_dal: v })}
-              />
-              <Campo
-                etichetta="Incarico al"
-                tipo="date"
-                valore={campi.periodo_al}
-                onCambia={(v) => modifica({ periodo_al: v })}
-              />
-            </div>
-          </section>
+          {/* ---------- report mensili: compaiono quando si conosce la classe ---------- */}
+          {classeImmobile ? (
+            <section className="rounded-2xl border border-cielo-200 bg-panna p-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">
+                  Consegna report mensile
+                </h2>
+                <span className="flex flex-wrap items-center gap-3 text-xs text-cielo-500">
+                  <span>
+                    Classe <b className="text-cielo-700">{classeImmobile}</b> · il fornitore consegna
+                  </span>
+                  <select
+                    value={attesiAlMese}
+                    onChange={(e) => modifica({ reportAttesi: Number(e.target.value) })}
+                    title="Quanti report deve consegnare ogni mese"
+                    className="rounded border border-cielo-300 bg-white px-2 py-0.5 text-xs text-cielo-800 outline-none focus:border-cielo-400"
+                  >
+                    <option value={1}>1 report al mese</option>
+                    <option value={2}>2 report al mese</option>
+                  </select>
+                  <span>
+                    <b className="text-cielo-700">{reportConsegnati}</b> su {attesiAlMese * 12} consegnati
+                  </span>
+                </span>
+              </div>
 
-          {/* ---------- report mensili ---------- */}
-          <section className="rounded-2xl border border-cielo-200 bg-panna p-6">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div className="mt-4 flex flex-wrap gap-2">
+                {MESI_BREVI.map((mese, i) => {
+                  const fatti = campi.report[i] ?? 0
+                  const completo = fatti >= attesiAlMese
+                  return (
+                    <div
+                      key={mese}
+                      className={`w-16 rounded-lg border p-1.5 text-center transition ${
+                        completo ? 'border-emerald-300 bg-emerald-50' : 'border-cielo-200 bg-white'
+                      }`}
+                    >
+                      <span
+                        className={`block text-xs font-semibold uppercase tracking-wide ${
+                          completo ? 'text-emerald-800' : 'text-cielo-500'
+                        }`}
+                      >
+                        {mese}
+                      </span>
+                      <span className="mt-1 flex justify-center gap-1">
+                        {Array.from({ length: attesiAlMese }, (_, n) => (
+                          <button
+                            key={n}
+                            onClick={() => segnaReport(i, n)}
+                            title={`${mese}: ${n + 1}° report ${fatti > n ? 'consegnato' : 'da consegnare'}`}
+                            className={`h-6 w-6 rounded border text-xs font-bold transition ${
+                              fatti > n
+                                ? 'border-emerald-400 bg-emerald-500 text-white'
+                                : 'border-cielo-300 bg-white text-cielo-300 hover:border-cielo-500'
+                            }`}
+                          >
+                            {fatti > n ? '✓' : ''}
+                          </button>
+                        ))}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          ) : (
+            <section className="rounded-2xl border border-cielo-200 bg-panna p-6">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">
                 Consegna report mensile
               </h2>
-              <span className="text-xs text-cielo-500">{reportConsegnati} su 12 consegnati</span>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {MESI_BREVI.map((mese, i) => {
-                const consegnato = campi.report[i]
-                return (
-                  <button
-                    key={mese}
-                    onClick={() =>
-                      modifica({ report: campi.report.map((v, j) => (j === i ? !v : v)) })
-                    }
-                    title={consegnato ? `${mese}: consegnato` : `${mese}: da consegnare`}
-                    className={`h-12 w-16 rounded-lg border text-sm font-medium transition ${
-                      consegnato
-                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                        : 'border-cielo-200 bg-white text-cielo-500 hover:border-cielo-400'
-                    }`}
-                  >
-                    <span className="block text-xs uppercase tracking-wide">{mese}</span>
-                    <span className="block text-base leading-none">{consegnato ? '✓' : '—'}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
+              <p className="mt-2 text-sm text-cielo-600">
+                Quanti report al mese servono dipende dalla <b>classe dell'immobile</b>, che si legge dalla
+                scheda intervento: carica un allegato e questa parte comparirà da sola.
+              </p>
+            </section>
+          )}
 
           <p className="text-xs text-cielo-500">
             Le modifiche si salvano da sole.{' '}
@@ -949,7 +959,8 @@ function estraiCampi(r: {
   periodo_al: string | null
   fabbisogno: number | null
   call_off: string | null
-  report: boolean[]
+  report: number[]
+  reportAttesi?: number | null
   bimestri: BimestreBM[]
   sds1: string | null
   sds2: string | null
@@ -977,7 +988,8 @@ function estraiCampi(r: {
     periodo_al: r.periodo_al,
     fabbisogno: r.fabbisogno,
     call_off: r.call_off,
-    report: Array.from({ length: 12 }, (_, i) => Boolean(r.report?.[i])),
+    report: Array.from({ length: 12 }, (_, i) => Number(r.report?.[i]) || 0),
+    reportAttesi: r.reportAttesi ?? null,
     bimestri: vuoto.bimestri.map((b, i) => ({ ...b, ...(r.bimestri?.[i] ?? {}) })),
     sds1: r.sds1,
     sds2: r.sds2,
