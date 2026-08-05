@@ -347,13 +347,16 @@ export default function BuildingManagerPage() {
     for (const i of coinvolti) {
       await dbLocale.bm.rimuovi(i.immobile_id, i.anno)
     }
-    void dbLocale.documenti.pulisci()
+    // i file (lettera e allegati) se ne vanno davvero dall'archivio, non solo
+    // il loro riferimento: si aspetta la pulizia prima di dire che è fatta
+    const { data: fileTolti } = await dbLocale.documenti.pulisci()
     setStato('fermo')
     const quantiImmobili = new Set(coinvolti.map((i) => i.immobile_id)).size
     toast.ok(
       `Lettera «${daTogliere.nomeFile}» cancellata da ${quantiImmobili} ${
         quantiImmobili === 1 ? 'immobile' : 'immobili'
-      } (${coinvolti.length} schede), allegati compresi.`,
+      } (${coinvolti.length} schede), allegati compresi` +
+        (fileTolti ? `. Eliminati ${fileTolti} ${fileTolti === 1 ? 'file' : 'file'} dall'archivio.` : '.'),
     )
     const { data } = await dbLocale.bm.get(immobileId, anno)
     setCampi(data ? estraiCampi(data) : datiBMVuoti())
@@ -415,9 +418,14 @@ export default function BuildingManagerPage() {
         },
       })
     }
-    void dbLocale.documenti.pulisci()
+    const { data: fileTolti } = await dbLocale.documenti.pulisci()
     setStato('fermo')
-    toast.ok(`Allegato «${allegato.nome}» cancellato da ${dati?.denominazione ?? 'questo immobile'}.`)
+    toast.ok(
+      `Allegato «${allegato.nome}» cancellato da ${dati?.denominazione ?? 'questo immobile'}` +
+        (fileTolti
+          ? ", e il file è stato eliminato dall'archivio."
+          : '. Il file resta perché serve ad altri immobili.'),
+    )
     const { data } = await dbLocale.bm.get(immobileId, anno)
     setCampi(data ? estraiCampi(data) : datiBMVuoti())
   }
