@@ -73,8 +73,18 @@ export type ApiTravi = {
     rimuovi(immobileId: string, anno: number): Promise<RispostaDb<null>>
   }
   documenti: {
-    /** salva il file caricato e restituisce il suo identificativo */
-    salva(d: { nome: string; tipo: string; contenuto: string; dimensione: number }): Promise<RispostaDb<string>>
+    /**
+     * Salva il file e restituisce il suo identificativo. `nomeArchivio` è il
+     * nome con cui vive sul disco e non deve mai ripetersi: se non lo si passa,
+     * lo genera il motore.
+     */
+    salva(d: {
+      nome: string
+      nomeArchivio?: string
+      tipo: string
+      contenuto: string
+      dimensione: number
+    }): Promise<RispostaDb<string>>
     apri(id: string): Promise<RispostaDb<Documento | null>>
     /** cancella i documenti che nessun incarico usa più */
     pulisci(): Promise<RispostaDb<number>>

@@ -6,7 +6,7 @@ import { useToast } from '../hooks/useToast'
 import { useImmobili } from '../hooks/useImmobili'
 import { useMappa } from '../hooks/useMappa'
 import { BIMESTRI, MESI_BREVI, STATI_AUTORIZZAZIONE, datiBMVuoti, reportAttesiPerClasse } from '../lib/tipi'
-import type { BimestreBM, DatiBM, Immobile, LetteraBM, AllegatoBM } from '../lib/tipi'
+import type { BimestreBM, DatiBM, Immobile, LetteraBM, AllegatoBM, CertificatoBM } from '../lib/tipi'
 import { giorniAlla, mesiDiIncarico } from '../lib/letteraAttivazione'
 import CaricaLettera, { italiana } from '../components/CaricaLettera'
 import type { EsitoLettera } from '../components/CaricaLettera'
@@ -14,6 +14,9 @@ import CaricaAllegati from '../components/CaricaAllegati'
 import type { FileAnalizzato } from '../components/CaricaAllegati'
 import FinestraDocumento from '../components/FinestraDocumento'
 import ConfermaCodice from '../components/ConfermaCodice'
+import GeneraCertificato from '../components/GeneraCertificato'
+import { pdfDaRighe } from '../lib/pdfSemplice'
+import { nomeUnivoco } from '../lib/nomiFile'
 import { regioneDaLocalizzazione } from '../lib/regioni'
 
 type Salvataggio = 'fermo' | 'in-corso' | 'salvato'
@@ -42,6 +45,7 @@ export default function BuildingManagerPage() {
   const [documentoAperto, setDocumentoAperto] = useState<string | null>(null)
   const [confermaCancellaLettera, setConfermaCancellaLettera] = useState(false)
   const [allegatoDaCancellare, setAllegatoDaCancellare] = useState<AllegatoBM | null>(null)
+  const [generaCertificato, setGeneraCertificato] = useState(false)
 
   // il salvataggio parte da solo poco dopo l'ultima modifica
   const attesaSalvataggio = useRef<number | undefined>(undefined)
@@ -399,6 +403,70 @@ export default function BuildingManagerPage() {
     setCampi(data ? estraiCampi(data) : datiBMVuoti())
   }
 
+  /**
+   * Genera il Certificato di Avvenuta Prestazione per i mesi scelti. Per ora il
+   * documento è di prova: contiene i dati dell'incarico e i mesi certificati.
+   */
+  async function creaCertificato(mesi: number[]) {
+    if (mesi.length === 0) return
+    setGeneraCertificato(false)
+    setStato('in-corso')
+    const elenco = mesi.map((m) => MESI_BREVI[m - 1]).join(', ')
+    const oggi = new Date()
+    const pdf = pdfDaRighe('Certificato di Avvenuta Prestazione', [
+      { testo: '(documento di prova)', spazioPrima: 4 },
+      { testo: `Immobile: ${dati?.asset ?? ''} ${dati?.denominazione ?? ''}`, grande: true, spazioPrima: 14 },
+      { testo: `Localizzazione: ${dati?.localizzazione ?? '-'}` },
+      { testo: `Portafoglio: ${dati?.portafoglio ?? '-'}` },
+      { testo: `Fornitore: ${campi.fornitore ?? '-'}`, spazioPrima: 12 },
+      { testo: `Building Manager: ${campi.nominativo ?? '-'}` },
+      { testo: `Incarico: dal ${italiana(campi.periodo_dal)} al ${italiana(campi.periodo_al)}` },
+      { testo: `Lettera di attivazione: ${campi.lettera?.nomeFile ?? '-'}` },
+      { testo: `Accordo quadro: ${campi.lettera?.accordoNome ?? '-'}` },
+      { testo: `Periodo certificato: ${elenco} ${anno}`, grande: true, grassetto: true, spazioPrima: 16 },
+      {
+        testo: `Report consegnati: ${mesi.length * attesiAlMese} (${attesiAlMese} al mese, classe ${
+          classeImmobile ?? '-'
+        })`,
+      },
+      { testo: `Generato il ${oggi.toLocaleDateString('it-IT')} alle ${oggi.toLocaleTimeString('it-IT')}`, spazioPrima: 20 },
+    ])
+
+    const nomeVisibile = `Certificato ${elenco} ${anno} - ${dati?.denominazione ?? ''}.pdf`
+    const { data: documentoId, error } = await dbLocale.documenti.salva({
+      nome: nomeVisibile,
+      // sul disco il nome non si ripete mai: così due certificati non si pestano
+      nomeArchivio: nomeUnivoco(nomeVisibile),
+      tipo: 'application/pdf',
+      dimensione: pdf.size,
+      contenuto: await base64Di(new File([pdf], nomeVisibile)),
+    })
+    if (error || !documentoId) {
+      setStato('fermo')
+      toast.errore(`Certificato non salvato: ${error?.message ?? 'errore'}`)
+      return
+    }
+    const certificato: CertificatoBM = {
+      id: crypto.randomUUID(),
+      documentoId,
+      nome: nomeVisibile,
+      generatoIl: new Date().toISOString(),
+      mesi,
+    }
+    const aggiornati = [...certificati, certificato]
+    const { error: erroreSalva } = await dbLocale.bm.salva(immobileId, anno, {
+      ...campi,
+      certificati: aggiornati,
+    })
+    setStato('fermo')
+    if (erroreSalva) {
+      toast.errore(`Certificato non registrato: ${erroreSalva.message}`)
+      return
+    }
+    setCampi((c) => ({ ...c, certificati: aggiornati }))
+    toast.ok(`Certificato generato per ${elenco} ${anno}.`)
+  }
+
   /** Cancella un allegato: solo per questo immobile, su tutti gli anni della lettera. */
   async function cancellaAllegato(allegato: AllegatoBM) {
     setAllegatoDaCancellare(null)
@@ -442,8 +510,7 @@ export default function BuildingManagerPage() {
   // non ha senso perché non si sa quanti chiederne
   const classeImmobile = lettera?.allegati.find((a) => a.classe)?.classe ?? null
   const attesiAlMese = campi.reportAttesi ?? reportAttesiPerClasse(classeImmobile)
-  // i certificati di avvenuta prestazione: l'elenco c'è, la generazione arriva
-  const certificati: { id: string; nome: string; generatoIl: string }[] = []
+  const certificati = campi.certificati ?? []
   const reportConsegnati = campi.report.reduce((s, n) => s + Math.min(n ?? 0, attesiAlMese), 0)
   const anniElenco = Array.from(new Set([ANNO_CORRENTE, ANNO_CORRENTE + 1, ANNO_CORRENTE - 1, ...anni])).sort(
     (a, b) => b - a,
@@ -775,11 +842,7 @@ export default function BuildingManagerPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-base font-semibold text-cielo-800">Certificati</p>
                   <button
-                    onClick={() =>
-                      toast.avviso(
-                        'La generazione del certificato è in preparazione: definiamo insieme cosa deve contenere.',
-                      )
-                    }
+                    onClick={() => setGeneraCertificato(true)}
                     className="flex items-center gap-2 rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
                   >
                     <IconaCertificato />
@@ -792,16 +855,38 @@ export default function BuildingManagerPage() {
                     Nessun certificato generato per questo immobile.
                   </p>
                 ) : (
-                  <ul className="mt-3 divide-y divide-cielo-100 rounded-xl border border-cielo-200 bg-panna">
-                    {certificati.map((c) => (
-                      <li key={c.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
-                        <span className="min-w-0 flex-1 truncate text-cielo-800">{c.nome}</span>
-                        <span className="shrink-0 text-xs text-cielo-500">
-                          {new Date(c.generatoIl).toLocaleDateString('it-IT')}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full min-w-[520px] text-sm">
+                      <thead>
+                        <tr className="border-b border-cielo-200 text-left text-xs uppercase tracking-wide text-cielo-500">
+                          <th className="px-2 py-2 font-semibold">Generato il</th>
+                          <th className="px-2 py-2 font-semibold">Mesi certificati</th>
+                          <th className="px-2 py-2 font-semibold">Documento</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {certificati.map((c) => (
+                          <tr key={c.id} className="border-b border-cielo-100 last:border-0">
+                            <td className="whitespace-nowrap px-2 py-2 text-cielo-700">
+                              {new Date(c.generatoIl).toLocaleDateString('it-IT')}
+                            </td>
+                            <td className="px-2 py-2 text-cielo-700">
+                              {c.mesi.map((m) => MESI_BREVI[m - 1]).join(', ')}
+                            </td>
+                            <td className="px-2 py-2">
+                              <button
+                                onClick={() => setDocumentoAperto(c.documentoId)}
+                                title="Apri il certificato"
+                                className="text-cielo-600 underline transition hover:text-cielo-800"
+                              >
+                                📄 {c.nome}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </section>
@@ -867,6 +952,18 @@ export default function BuildingManagerPage() {
 
       {documentoAperto && (
         <FinestraDocumento id={documentoAperto} onChiudi={() => setDocumentoAperto(null)} />
+      )}
+
+      {generaCertificato && (
+        <GeneraCertificato
+          anno={anno}
+          denominazione={dati?.denominazione ?? immobile.denominazione}
+          report={campi.report}
+          attesiAlMese={attesiAlMese}
+          certificati={certificati}
+          onChiudi={() => setGeneraCertificato(false)}
+          onContinua={(mesi) => void creaCertificato(mesi)}
+        />
       )}
 
       {confermaCancellaLettera && campi.lettera && (
@@ -1045,6 +1142,7 @@ function estraiCampi(r: {
   call_off: string | null
   report: number[]
   reportAttesi?: number | null
+  certificati?: CertificatoBM[]
   bimestri: BimestreBM[]
   sds1: string | null
   sds2: string | null
@@ -1074,6 +1172,7 @@ function estraiCampi(r: {
     call_off: r.call_off,
     report: Array.from({ length: 12 }, (_, i) => Number(r.report?.[i]) || 0),
     reportAttesi: r.reportAttesi ?? null,
+    certificati: Array.isArray(r.certificati) ? r.certificati : [],
     bimestri: vuoto.bimestri.map((b, i) => ({ ...b, ...(r.bimestri?.[i] ?? {}) })),
     sds1: r.sds1,
     sds2: r.sds2,

@@ -11,9 +11,10 @@ import type {
   AnteprimaImport,
   StatoAggiornamento,
 } from './db'
-import type { Immobile, IncaricoBM, DatiBM, Documento, AllegatoBM } from './tipi'
+import type { Immobile, IncaricoBM, DatiBM, Documento, AllegatoBM, CertificatoBM } from './tipi'
 import { BIMESTRI, bimestreVuoto, datiBMVuoti } from './tipi'
 import { regioneDaLocalizzazione } from './regioni'
+import { nomeUnivoco } from './nomiFile'
 
 const ADMIN_PERMANENTE = 'marabelli.s@gmail.com'
 const FORMATO_ESPORTAZIONE = 'travi-dati-1'
@@ -1062,6 +1063,7 @@ function normalizzaBM(campi: Partial<DatiBM>): DatiBM {
       return Number.isFinite(n) && n > 0 ? Math.min(9, Math.round(n)) : 0
     }),
     reportAttesi: numeroOppureNulla(campi.reportAttesi),
+    certificati: Array.isArray(campi.certificati) ? (campi.certificati as CertificatoBM[]) : [],
     bimestri: BIMESTRI.map((_, i) => {
       const b = bimestri[i] ?? bimestreVuoto()
       return {
@@ -1576,13 +1578,16 @@ export function creaApiBrowser(): ApiTravi {
     },
 
     documenti: {
-      salva: (d: { nome: string; tipo: string; contenuto: string; dimensione: number }) =>
+      salva: (d: { nome: string; nomeArchivio?: string; tipo: string; contenuto: string; dimensione: number }) =>
         rispondi(async () => {
           await richiediSessione()
           const id = crypto.randomUUID()
           await metti('documenti', {
             id,
             nome: String(d.nome || 'documento'),
+            // sul disco il nome non si ripete mai, anche se il file caricato
+            // ha lo stesso nome di un altro già presente
+            nomeArchivio: d.nomeArchivio?.trim() || nomeUnivoco(String(d.nome || 'documento')),
             tipo: String(d.tipo || 'application/pdf'),
             dimensione: Number(d.dimensione) || 0,
             caricato_il: new Date().toISOString(),

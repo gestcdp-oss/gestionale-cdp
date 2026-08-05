@@ -130,6 +130,7 @@ function apriDb(nomeFile = 'travi.db') {
       bimestri_json text,
       lettera_json  text,
       report_attesi integer,
+      certificati_json text,
       sds1          text,
       sds2          text,
       svincolo_id   text,
@@ -155,6 +156,9 @@ function apriDb(nomeFile = 'travi.db') {
   const colonneBm = db.prepare('pragma table_info(bm)').all().map((c) => c.name)
   if (!colonneBm.includes('lettera_json')) db.exec('alter table bm add column lettera_json text')
   if (!colonneBm.includes('report_attesi')) db.exec('alter table bm add column report_attesi integer')
+  if (!colonneBm.includes('certificati_json')) db.exec('alter table bm add column certificati_json text')
+  const colonneDoc = db.prepare('pragma table_info(documenti)').all().map((c) => c.name)
+  if (!colonneDoc.includes('nome_archivio')) db.exec('alter table documenti add column nome_archivio text')
   seminaSeServe()
 }
 
@@ -555,6 +559,7 @@ function bmDaRiga(r) {
       return Number.isFinite(n) && n > 0 ? Math.min(9, Math.round(n)) : 0
     }),
     reportAttesi: r.report_attesi === null || r.report_attesi === undefined ? null : Number(r.report_attesi),
+    certificati: leggi(r.certificati_json, []),
     bimestri: Array.from({ length: 6 }, (_, i) => ({
       idBem: bimestri[i]?.idBem ?? null,
       importo: bimestri[i]?.importo ?? null,
@@ -619,6 +624,7 @@ ipcMain.handle('bm:salva', (_ev, { immobileId, anno, campi }) =>
       JSON.stringify(report),
       JSON.stringify(bimestri),
       numeroOppureNulla(c.reportAttesi),
+      JSON.stringify(Array.isArray(c.certificati) ? c.certificati : []),
       pulisci(c.sds1),
       pulisci(c.sds2),
       pulisci(c.svincolo_id),
@@ -629,7 +635,7 @@ ipcMain.handle('bm:salva', (_ev, { immobileId, anno, campi }) =>
       db.prepare(
         `update bm set lettera_json = ?, fornitore = ?, nominativo = ?, recapito = ?, categoria = ?, periodo_dal = ?,
                        periodo_al = ?, fabbisogno = ?, call_off = ?, report_json = ?, bimestri_json = ?,
-                       report_attesi = ?, sds1 = ?, sds2 = ?, svincolo_id = ?, svincolo_aut = ?, note = ?,
+                       report_attesi = ?, certificati_json = ?, sds1 = ?, sds2 = ?, svincolo_id = ?, svincolo_aut = ?, note = ?,
                        aggiornato_il = datetime('now')
          where id = ?`,
       ).run(...valori, esistente.id)
@@ -656,13 +662,39 @@ ipcMain.handle('bm:anni', (_ev, immobileId) =>
 )
 
 // ---------- IPC: documenti caricati ----------
+// REGOLA: sul disco il nome del file non si ripete mai (data, ora e una parte
+// casuale); all'utente si mostra invece il nome parlante.
+function nomeUnivocoFile(nomeVisibile) {
+  const d = new Date()
+  const due = (n) => String(n).padStart(2, '0')
+  const quando =
+    `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}` +
+    `_${due(d.getHours())}${due(d.getMinutes())}-${due(d.getSeconds())}`
+  const caso = Math.random().toString(36).slice(2, 8)
+  const estensione = (String(nomeVisibile).match(/\.[A-Za-z0-9]{1,6}$/) || [''])[0]
+  const base = String(nomeVisibile)
+    .slice(0, String(nomeVisibile).length - estensione.length)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+  return `${quando}_${caso}_${base || 'documento'}${estensione}`
+}
 ipcMain.handle('documenti:salva', (_ev, d) =>
   rispondi(() => {
     richiediSessione()
     const id = crypto.randomUUID()
     db.prepare(
-      'insert into documenti (id, nome, tipo, dimensione, contenuto) values (?, ?, ?, ?, ?)',
-    ).run(id, String(d.nome || 'documento'), String(d.tipo || ''), Number(d.dimensione) || 0, String(d.contenuto || ''))
+      'insert into documenti (id, nome, nome_archivio, tipo, dimensione, contenuto) values (?, ?, ?, ?, ?, ?)',
+    ).run(
+      id,
+      String(d.nome || 'documento'),
+      String(d.nomeArchivio || '') || nomeUnivocoFile(d.nome || 'documento'),
+      String(d.tipo || ''),
+      Number(d.dimensione) || 0,
+      String(d.contenuto || ''),
+    )
     return id
   }),
 )

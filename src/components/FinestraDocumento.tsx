@@ -10,7 +10,13 @@ import Finestra from './Finestra'
  * formati resta il pulsante per aprirli con il programma del computer.
  */
 export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiudi: () => void }) {
-  const [documento, setDocumento] = useState<{ nome: string; tipo: string; url: string } | null>(null)
+  const [documento, setDocumento] = useState<{
+    nome: string
+    /** nome univoco con cui il file vive sul disco */
+    nomeArchivio: string
+    tipo: string
+    url: string
+  } | null>(null)
   const [pagine, setPagine] = useState<ParagrafoDocx[] | null>(null)
   const [errore, setErrore] = useState<string | null>(null)
 
@@ -28,7 +34,12 @@ export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiu
       const blob = new Blob([byte], { type: data.tipo || 'application/pdf' })
       const url = URL.createObjectURL(blob)
       daLiberare = url
-      setDocumento({ nome: data.nome, tipo: data.tipo, url })
+      setDocumento({
+        nome: data.nome,
+        nomeArchivio: data.nomeArchivio || data.nome,
+        tipo: data.tipo,
+        url,
+      })
       // i Word non si sfogliano come i PDF: se ne mostra il contenuto
       if (eWord(data.nome, data.tipo)) {
         try {
@@ -59,7 +70,8 @@ export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiu
         documento && (
           <a
             href={documento.url}
-            download={documento.nome}
+            download={documento.nomeArchivio}
+            title={`Salva sul computer come ${documento.nomeArchivio}`}
             className="rounded px-2 py-1 text-xs text-cielo-600 transition hover:bg-cielo-200 hover:text-cielo-800"
           >
             Salva una copia
@@ -105,7 +117,7 @@ export default function FinestraDocumento({ id, onChiudi }: { id: string; onChiu
           </p>
           <a
             href={documento.url}
-            download={documento.nome}
+            download={documento.nomeArchivio}
             className="rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
           >
             Apri {documento.nome}

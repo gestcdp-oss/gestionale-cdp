@@ -30,7 +30,10 @@ export type BimestreBM = {
  */
 export type Documento = {
   id: string
+  /** nome mostrato all'utente */
   nome: string
+  /** nome con cui il file vive nell'archivio: non può ripetersi mai */
+  nomeArchivio?: string
   tipo: string
   dimensione: number
   caricato_il: string
@@ -51,6 +54,18 @@ export type AllegatoBM = {
   dal: string | null
   al: string | null
   importoTotale: number | null
+}
+
+/** Un Certificato di Avvenuta Prestazione generato dal programma. */
+export type CertificatoBM = {
+  id: string
+  /** il file nell'archivio dei documenti */
+  documentoId: string
+  /** nome parlante mostrato nell'elenco */
+  nome: string
+  generatoIl: string
+  /** mesi coperti dal certificato: 1 = gennaio */
+  mesi: number[]
 }
 
 /** Dati letti dalla Lettera di attivazione, conservati insieme all'incarico. */
@@ -94,6 +109,8 @@ export type IncaricoBM = {
   report: number[]
   /** quanti report al mese deve consegnare il fornitore (dalla classe) */
   reportAttesi: number | null
+  /** certificati di avvenuta prestazione già emessi per quest'anno */
+  certificati: CertificatoBM[]
   /** sei bimestri di fatturazione */
   bimestri: BimestreBM[]
   /** stato di servizio del primo e del secondo semestre */
@@ -148,6 +165,7 @@ export function datiBMVuoti(): DatiBM {
     call_off: null,
     report: Array(12).fill(0),
     reportAttesi: null,
+    certificati: [],
     bimestri: BIMESTRI.map(() => bimestreVuoto()),
     sds1: null,
     sds2: null,
