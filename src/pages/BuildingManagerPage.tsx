@@ -394,9 +394,6 @@ export default function BuildingManagerPage() {
   const inScadenza = giorniAllaScadenza !== null && giorniAllaScadenza <= 60
   // "in corso di validità": la scadenza non è ancora passata
   const letteraValida = Boolean(lettera) && (giorniAllaScadenza === null || giorniAllaScadenza >= 0)
-  // se non c'è nessun dato, la pagina mostra solo il pulsante di caricamento
-  const schedaVuota =
-    !lettera && !campi.fornitore && !campi.nominativo && !campi.fabbisogno && !campi.call_off
   const totaleBimestri = campi.bimestri.reduce((s, b) => s + (b.importo ?? 0), 0)
   const reportConsegnati = campi.report.filter(Boolean).length
   const anniElenco = Array.from(new Set([ANNO_CORRENTE, ANNO_CORRENTE + 1, ANNO_CORRENTE - 1, ...anni])).sort(
@@ -478,23 +475,24 @@ export default function BuildingManagerPage() {
         </p>
       ) : caricamento ? (
         <p className="text-sm text-cielo-500">Caricamento…</p>
-      ) : schedaVuota ? (
-        /* nessuna lettera e nessun dato: si parte da qui */
-        <section className="rounded-2xl border border-cielo-200 bg-panna p-10 text-center">
-          <p className="text-4xl">📄</p>
-          <h2 className="mt-3 text-lg font-semibold text-cielo-800">
-            Nessuna Lettera di attivazione in corso di validità
-          </h2>
-          <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-cielo-600">
-            I dati dell'incarico di Building Management si ricavano dalla Lettera di attivazione: caricala e il
-            programma ne legge fornitore, accordo quadro, nominativo del Building Manager, importo e durata.
+      ) : !lettera ? (
+        /* senza lettera per quest'anno non c'è incarico da mostrare */
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">
+              Lettera di attivazione
+            </h2>
+            <button
+              onClick={() => setCaricaLettera(true)}
+              className="rounded-lg border border-cielo-300 bg-panna px-3 py-1.5 text-sm text-cielo-700 transition hover:bg-cielo-50"
+            >
+              Carica Lettera di Attivazione
+            </button>
+          </div>
+          <p className="mt-3 text-sm text-amber-800">
+            Per questo immobile non è stata caricata nessuna lettera per il {anno}: caricato il documento si
+            visualizzeranno i dati.
           </p>
-          <button
-            onClick={() => setCaricaLettera(true)}
-            className="mt-5 rounded-lg bg-cielo-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-cielo-600"
-          >
-            Carica Lettera di Attivazione
-          </button>
         </section>
       ) : (
         <>
@@ -508,17 +506,10 @@ export default function BuildingManagerPage() {
               <h2 className="text-sm font-semibold uppercase tracking-wide text-cielo-500">
                 Lettera di attivazione
               </h2>
-              {!lettera && (
-                <button
-                  onClick={() => setCaricaLettera(true)}
-                  className="rounded-lg border border-cielo-300 px-3 py-1.5 text-sm text-cielo-700 transition hover:bg-cielo-50"
-                >
-                  Carica Lettera di Attivazione
-                </button>
-              )}
+
             </div>
 
-            {lettera ? (
+            {lettera && (
               <>
                 <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <DatoLettera etichetta="Fornitore" valore={campi.fornitore} sotto={lettera.fornitoreIndirizzo} />
@@ -661,11 +652,6 @@ export default function BuildingManagerPage() {
                   </p>
                 )}
               </>
-            ) : (
-              <p className="mt-3 text-sm text-amber-800">
-                Per questo immobile non è stata caricata nessuna lettera: i dati qui sotto arrivano dal
-                monitoraggio.
-              </p>
             )}
           </section>
 
