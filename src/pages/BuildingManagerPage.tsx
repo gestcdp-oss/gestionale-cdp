@@ -5,7 +5,14 @@ import { useSelezione } from '../hooks/useSelezione'
 import { useToast } from '../hooks/useToast'
 import { useImmobili } from '../hooks/useImmobili'
 import { useMappa } from '../hooks/useMappa'
-import { BIMESTRI, MESI_BREVI, STATI_AUTORIZZAZIONE, datiBMVuoti, reportAttesiPerClasse } from '../lib/tipi'
+import {
+  BIMESTRI,
+  MESI_BREVI,
+  STATI_AUTORIZZAZIONE,
+  datiBMVuoti,
+  mesiPerEsteso,
+  reportAttesiPerClasse,
+} from '../lib/tipi'
 import type { BimestreBM, DatiBM, Immobile, LetteraBM, AllegatoBM, CertificatoBM } from '../lib/tipi'
 import { giorniAlla, mesiDiIncarico } from '../lib/letteraAttivazione'
 import CaricaLettera, { italiana } from '../components/CaricaLettera'
@@ -46,6 +53,7 @@ export default function BuildingManagerPage() {
   const [confermaCancellaLettera, setConfermaCancellaLettera] = useState(false)
   const [allegatoDaCancellare, setAllegatoDaCancellare] = useState<AllegatoBM | null>(null)
   const [generaCertificato, setGeneraCertificato] = useState(false)
+  const [certificatoDaCancellare, setCertificatoDaCancellare] = useState<CertificatoBM | null>(null)
 
   // il salvataggio parte da solo poco dopo l'ultima modifica
   const attesaSalvataggio = useRef<number | undefined>(undefined)
@@ -411,7 +419,7 @@ export default function BuildingManagerPage() {
     if (mesi.length === 0) return
     setGeneraCertificato(false)
     setStato('in-corso')
-    const elenco = mesi.map((m) => MESI_BREVI[m - 1]).join(', ')
+    const elenco = mesiPerEsteso(mesi)
     const oggi = new Date()
     const pdf = pdfDaRighe('Certificato di Avvenuta Prestazione', [
       { testo: '(documento di prova)', spazioPrima: 4 },
@@ -465,6 +473,26 @@ export default function BuildingManagerPage() {
     }
     setCampi((c) => ({ ...c, certificati: aggiornati }))
     toast.ok(`Certificato generato per ${elenco} ${anno}.`)
+  }
+
+  /** Cancella un certificato: se ne va anche il PDF dall'archivio. */
+  async function cancellaCertificato(cert: CertificatoBM) {
+    setCertificatoDaCancellare(null)
+    setStato('in-corso')
+    const rimasti = certificati.filter((c) => c.id !== cert.id)
+    const { error } = await dbLocale.bm.salva(immobileId, anno, { ...campi, certificati: rimasti })
+    if (error) {
+      setStato('fermo')
+      toast.errore(`Certificato non cancellato: ${error.message}`)
+      return
+    }
+    setCampi((c) => ({ ...c, certificati: rimasti }))
+    const { data: fileTolti } = await dbLocale.documenti.pulisci()
+    setStato('fermo')
+    toast.ok(
+      `Certificato di ${mesiPerEsteso(cert.mesi)} ${anno} cancellato` +
+        (fileTolti ? ", e il file è stato eliminato dall'archivio." : '.'),
+    )
   }
 
   /** Cancella un allegato: solo per questo immobile, su tutti gli anni della lettera. */
@@ -840,7 +868,9 @@ export default function BuildingManagerPage() {
               {/* ---- certificati di avvenuta prestazione ---- */}
               <div className="mt-5 border-t border-cielo-200 pt-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-base font-semibold text-cielo-800">Certificati</p>
+                  <p className="text-base font-semibold text-cielo-800">
+                    Certificati di Avvenuta Prestazione
+                  </p>
                   <button
                     onClick={() => setGeneraCertificato(true)}
                     className="flex items-center gap-2 rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600"
@@ -862,24 +892,32 @@ export default function BuildingManagerPage() {
                           <th className="px-2 py-2 font-semibold">Generato il</th>
                           <th className="px-2 py-2 font-semibold">Mesi certificati</th>
                           <th className="px-2 py-2 font-semibold">Documento</th>
+                          <th className="w-8 px-2 py-2" />
                         </tr>
                       </thead>
                       <tbody>
                         {certificati.map((c) => (
-                          <tr key={c.id} className="border-b border-cielo-100 last:border-0">
+                          <tr key={c.id} className="group border-b border-cielo-100 last:border-0">
                             <td className="whitespace-nowrap px-2 py-2 text-cielo-700">
                               {new Date(c.generatoIl).toLocaleDateString('it-IT')}
                             </td>
-                            <td className="px-2 py-2 text-cielo-700">
-                              {c.mesi.map((m) => MESI_BREVI[m - 1]).join(', ')}
-                            </td>
+                            <td className="px-2 py-2 text-cielo-700">{mesiPerEsteso(c.mesi)}</td>
                             <td className="px-2 py-2">
                               <button
                                 onClick={() => setDocumentoAperto(c.documentoId)}
                                 title="Apri il certificato"
-                                className="text-cielo-600 underline transition hover:text-cielo-800"
+                                className="text-left text-cielo-600 underline transition hover:text-cielo-800"
                               >
                                 📄 {c.nome}
+                              </button>
+                            </td>
+                            <td className="w-8 px-2 py-2 text-right">
+                              <button
+                                onClick={() => setCertificatoDaCancellare(c)}
+                                title="Cancella questo certificato"
+                                className="flex h-6 w-6 items-center justify-center rounded-full text-cielo-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
+                              >
+                                <IconaCestino />
                               </button>
                             </td>
                           </tr>
@@ -989,6 +1027,21 @@ export default function BuildingManagerPage() {
               dell'incarico.
             </p>
           )}
+        </ConfermaCodice>
+      )}
+
+      {certificatoDaCancellare && (
+        <ConfermaCodice
+          titolo="Cancellare questo certificato?"
+          azione="Cancella il certificato"
+          onAnnulla={() => setCertificatoDaCancellare(null)}
+          onConferma={() => void cancellaCertificato(certificatoDaCancellare)}
+        >
+          <p>
+            Se ne vanno il certificato di <b>{mesiPerEsteso(certificatoDaCancellare.mesi)} {anno}</b> e il suo
+            file PDF. I report consegnati restano segnati: dopo la cancellazione potrai generarne uno nuovo per
+            quegli stessi mesi.
+          </p>
         </ConfermaCodice>
       )}
 

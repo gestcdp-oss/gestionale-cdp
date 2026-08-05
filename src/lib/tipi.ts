@@ -128,6 +128,21 @@ export type DatiBM = Omit<IncaricoBM, 'id' | 'immobile_id' | 'anno' | 'aggiornat
 
 export const MESI_BREVI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic']
 
+/** Nomi per esteso, per i documenti e gli elenchi. */
+export const MESI = [
+  'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+  'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
+]
+
+/** "Gennaio, Febbraio" dai numeri dei mesi (1 = gennaio). */
+export function mesiPerEsteso(mesi: number[]): string {
+  return mesi
+    .filter((m) => m >= 1 && m <= 12)
+    .sort((a, b) => a - b)
+    .map((m) => MESI[m - 1])
+    .join(', ')
+}
+
 /**
  * Report attesi ogni mese secondo la classe dell'immobile: gli immobili di
  * classe A ne richiedono due, gli altri uno. Resta modificabile dalla pagina.
