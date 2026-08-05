@@ -1,0 +1,72 @@
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mascotte TR.A.V.I.: trave di legno con caschetto da cantiere e planimetria in mano">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#D9A566"/>
+      <stop offset="1" stop-color="#9E6428"/>
+    </linearGradient>
+    <linearGradient id="hat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFD23F"/>
+      <stop offset="1" stop-color="#F5B301"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ombra a terra -->
+  <ellipse cx="126" cy="210" rx="66" ry="11" fill="#000000" opacity="0.10"/>
+
+  <!-- BRACCIO SINISTRO + mano -->
+  <path d="M86 122 Q62 132 56 154" fill="none" stroke="#3A2A1E" stroke-width="20" stroke-linecap="round"/>
+  <path d="M86 122 Q62 132 56 154" fill="none" stroke="#9E6428" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="55" cy="156" r="11" fill="#BE823E" stroke="#3A2A1E" stroke-width="5"/>
+
+  <!-- GAMBE + SCARPONI -->
+  <rect x="102" y="150" width="15" height="42" rx="7.5" fill="#9E6428" stroke="#3A2A1E" stroke-width="5"/>
+  <rect x="138" y="150" width="15" height="42" rx="7.5" fill="#9E6428" stroke="#3A2A1E" stroke-width="5"/>
+  <rect x="90" y="184" width="32" height="17" rx="7.5" fill="#463628" stroke="#3A2A1E" stroke-width="5"/>
+  <rect x="133" y="184" width="32" height="17" rx="7.5" fill="#463628" stroke="#3A2A1E" stroke-width="5"/>
+
+  <!-- CORPO (trave di legno) -->
+  <path d="M72 100 Q128 74 184 100 L184 150 Q184 168 166 168 L90 168 Q72 168 72 150 Z"
+        fill="url(#tile)" stroke="#3A2A1E" stroke-width="5" stroke-linejoin="round"/>
+  <!-- venature del legno -->
+  <path d="M110 96 Q106 132 110 166" fill="none" stroke="#7C4A20" stroke-width="4" stroke-linecap="round"/>
+  <path d="M146 96 Q150 132 146 166" fill="none" stroke="#7C4A20" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- GUANCE -->
+  <ellipse cx="97" cy="146" rx="7.5" ry="5" fill="#E9A277" opacity="0.55"/>
+  <ellipse cx="159" cy="146" rx="7.5" ry="5" fill="#E9A277" opacity="0.55"/>
+
+  <!-- OCCHI -->
+  <ellipse cx="112" cy="130" rx="13" ry="14" fill="#FFFFFF" stroke="#3A2A1E" stroke-width="4"/>
+  <ellipse cx="144" cy="130" rx="13" ry="14" fill="#FFFFFF" stroke="#3A2A1E" stroke-width="4"/>
+  <circle cx="115" cy="132" r="5.5" fill="#2B2620"/>
+  <circle cx="147" cy="132" r="5.5" fill="#2B2620"/>
+  <circle cx="112.5" cy="129" r="2" fill="#FFFFFF"/>
+  <circle cx="144.5" cy="129" r="2" fill="#FFFFFF"/>
+
+  <!-- SORRISO -->
+  <path d="M115 152 Q128 163 141 152" fill="none" stroke="#3A2A1E" stroke-width="4.5" stroke-linecap="round"/>
+
+  <!-- CASCHETTO -->
+  <path d="M80 96 Q80 50 128 48 Q176 50 176 96 Z" fill="url(#hat)" stroke="#3A2A1E" stroke-width="5" stroke-linejoin="round"/>
+  <rect x="63" y="94" width="130" height="12" rx="6" fill="url(#hat)" stroke="#3A2A1E" stroke-width="5"/>
+  <path d="M128 52 L128 94" stroke="#E0A100" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M107 57 Q104 78 107 93" fill="none" stroke="#E0A100" stroke-width="4"/>
+  <path d="M149 57 Q152 78 149 93" fill="none" stroke="#E0A100" stroke-width="4"/>
+  <path d="M96 90 Q99 64 120 55" fill="none" stroke="#FFE384" stroke-width="5" stroke-linecap="round" opacity="0.85"/>
+
+  <!-- BRACCIO DESTRO alzato -->
+  <path d="M176 120 Q198 110 206 88" fill="none" stroke="#3A2A1E" stroke-width="20" stroke-linecap="round"/>
+  <path d="M176 120 Q198 110 206 88" fill="none" stroke="#9E6428" stroke-width="12" stroke-linecap="round"/>
+
+  <!-- PLANIMETRIA (piantina) -->
+  <g transform="rotate(-14 214 66)">
+    <rect x="194" y="40" width="42" height="52" rx="3" fill="#EAF2FB" stroke="#2F6FB3" stroke-width="4"/>
+    <rect x="201" y="49" width="28" height="34" fill="none" stroke="#3B7DD8" stroke-width="3"/>
+    <path d="M201 68 H216" stroke="#3B7DD8" stroke-width="3"/>
+    <path d="M216 68 A9 9 0 0 0 225 59" fill="none" stroke="#3B7DD8" stroke-width="2.5"/>
+    <path d="M207 84 H223" stroke="#9DB8D6" stroke-width="2.5"/>
+  </g>
+
+  <!-- MANO DESTRA (impugna la planimetria) -->
+  <circle cx="206" cy="88" r="11" fill="#BE823E" stroke="#3A2A1E" stroke-width="5"/>
+</svg>
