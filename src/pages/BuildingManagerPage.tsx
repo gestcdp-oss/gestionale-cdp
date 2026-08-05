@@ -22,7 +22,7 @@ const ANNO_CORRENTE = new Date().getFullYear()
 
 export default function BuildingManagerPage() {
   const { immobile } = useSelezione()
-  const { immobili, caricamento: caricamentoImmobili } = useImmobili()
+  const { immobili, caricamento: caricamentoImmobili, ricarica: ricaricaImmobili } = useImmobili()
   const toast = useToast()
   const { apri: apriMappa } = useMappa()
   const dati = immobili.find((i) => i.id === immobile?.id) ?? null
@@ -218,6 +218,31 @@ export default function BuildingManagerPage() {
   async function registraAllegati(scelti: FileAnalizzato[]) {
     setCaricaAllegati(false)
     setStato('in-corso')
+
+    // prima le correzioni ai portafogli accettate durante il controllo
+    for (const scelto of scelti) {
+      const c = scelto.correzione
+      if (!c || !scelto.immobile) continue
+      const bersagli =
+        c.ambito === 'tutti'
+          ? immobili.filter((i) => (i.portafoglio ?? '').trim() === c.da.trim())
+          : [scelto.immobile]
+      for (const im of bersagli) {
+        await dbLocale.immobili.update(im.id, {
+          asset: im.asset,
+          denominazione: im.denominazione,
+          portafoglio: c.a,
+          localizzazione: im.localizzazione,
+          regione: im.regione,
+        })
+      }
+      await ricaricaImmobili()
+      toast.ok(
+        `Portafoglio «${c.da}» rinominato in «${c.a}» su ${bersagli.length} ${
+          bersagli.length === 1 ? 'immobile' : 'immobili'
+        }.`,
+      )
+    }
 
     let registrati = 0
     // per il messaggio finale: dove è finito ogni allegato

@@ -22,6 +22,13 @@ export type FileAnalizzato = {
   incoerenze: Incoerenza[]
   /** committente della scheda diverso dal portafoglio dell'immobile */
   avvisoCommittente: string | null
+  /**
+   * Cosa fare del portafoglio quando non combacia: finché la risposta manca,
+   * l'allegato non si registra.
+   */
+  decisione: 'in-attesa' | 'rifiutata' | 'tutti' | 'solo-questo' | null
+  /** la correzione da applicare, se l'utente l'ha accettata */
+  correzione: { da: string; a: string; ambito: 'tutti' | 'solo-questo' } | null
 }
 
 /** L'incarico di un immobile per un certo anno, con la sua lettera. */
@@ -79,7 +86,26 @@ export default function CaricaAllegati({
     )
   }
 
-  const registrabili = analizzati.filter((a) => !a.bloccante && a.immobile)
+  function rispondi(indice: number, decisione: FileAnalizzato['decisione']) {
+    setAnalizzati((elenco) =>
+      elenco.map((a, i) => {
+        if (i !== indice) return a
+        const da = a.immobile?.portafoglio ?? ''
+        const verso = a.scheda?.committente ?? ''
+        return {
+          ...a,
+          decisione,
+          correzione:
+            (decisione === 'tutti' || decisione === 'solo-questo') && da && verso
+              ? { da, a: verso, ambito: decisione }
+              : null,
+        }
+      }),
+    )
+  }
+
+  const registrabili = analizzati.filter((a) => !a.bloccante && a.immobile && a.decisione !== 'in-attesa')
+  const inAttesa = analizzati.filter((a) => !a.bloccante && a.immobile && a.decisione === 'in-attesa')
   const conProblemi = analizzati.filter((a) => a.bloccante || a.incoerenze.length > 0)
 
   return (
@@ -211,7 +237,83 @@ export default function CaricaAllegati({
                   )}
 
                   {a.avvisoCommittente && !a.bloccante && (
-                    <p className="mt-2 text-xs text-amber-800">⚠️ {a.avvisoCommittente}</p>
+                    <div className="mt-3 rounded-lg border border-amber-300 bg-amber-100 p-3 text-sm text-amber-900">
+                      <p>⚠️ {a.avvisoCommittente}</p>
+
+                      {a.decisione === 'in-attesa' && (
+                        <div className="mt-3">
+                          <p>
+                            Vuoi cambiare il nome del portafoglio «<b>{a.immobile?.portafoglio}</b>» con quello
+                            presente in questo allegato («<b>{a.scheda?.committente}</b>»)?
+                          </p>
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              onClick={() => rispondi(i, 'solo-questo')}
+                              className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-amber-700"
+                            >
+                              Sì
+                            </button>
+                            <button
+                              onClick={() => rispondi(i, 'rifiutata')}
+                              className="rounded-lg border border-amber-400 px-3 py-1.5 text-sm transition hover:bg-amber-200"
+                            >
+                              No, lascia com'è
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {(a.decisione === 'solo-questo' || a.decisione === 'tutti') && (
+                        <div className="mt-3">
+                          <p>
+                            Cambio «<b>{a.correzione?.da}</b>» in «<b>{a.correzione?.a}</b>» in tutti gli
+                            immobili dove compare oppure solo in questo?
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button
+                              onClick={() => rispondi(i, 'tutti')}
+                              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                                a.decisione === 'tutti'
+                                  ? 'bg-amber-700 text-white'
+                                  : 'border border-amber-400 hover:bg-amber-200'
+                              }`}
+                            >
+                              Applica la correzione a tutti
+                              {a.immobile && (
+                                <span className="ml-1 font-normal">
+                                  ({quantiConPortafoglio(immobili, a.immobile.portafoglio)})
+                                </span>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => rispondi(i, 'solo-questo')}
+                              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                                a.decisione === 'solo-questo'
+                                  ? 'bg-amber-700 text-white'
+                                  : 'border border-amber-400 hover:bg-amber-200'
+                              }`}
+                            >
+                              Solo a questo
+                            </button>
+                            <button
+                              onClick={() => rispondi(i, 'rifiutata')}
+                              className="rounded-lg px-3 py-1.5 text-sm underline transition hover:bg-amber-200"
+                            >
+                              lascia com'è
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {a.decisione === 'rifiutata' && (
+                        <p className="mt-2 text-xs">
+                          Il portafoglio resta «{a.immobile?.portafoglio}».{' '}
+                          <button onClick={() => rispondi(i, 'in-attesa')} className="underline">
+                            ci ripenso
+                          </button>
+                        </p>
+                      )}
+                    </div>
                   )}
                 </li>
               ))}
@@ -224,9 +326,14 @@ export default function CaricaAllegati({
               >
                 Annulla
               </button>
+              {inAttesa.length > 0 && (
+                <p className="self-center text-sm text-amber-800">
+                  Rispondi alla domanda sul portafoglio per proseguire.
+                </p>
+              )}
               <button
                 onClick={() => onFatto(registrabili)}
-                disabled={registrabili.length === 0}
+                disabled={registrabili.length === 0 || inAttesa.length > 0}
                 className="rounded-lg bg-cielo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cielo-600 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Registra {registrabili.length} {registrabili.length === 1 ? 'allegato' : 'allegati'}
@@ -251,7 +358,13 @@ async function verificaControLettera(
   immobile: Immobile,
   annoCorrente: number,
   leggiIncarico: (immobileId: string, anno: number) => Promise<IncaricoDiRiferimento>,
-): Promise<{ bloccante: string | null; incoerenze: Incoerenza[]; avvisoCommittente: string | null }> {
+): Promise<{
+  bloccante: string | null
+  incoerenze: Incoerenza[]
+  avvisoCommittente: string | null
+  decisione: FileAnalizzato['decisione']
+  correzione: FileAnalizzato['correzione']
+}> {
   const anno = Number((scheda?.dal ?? '').slice(0, 4)) || annoCorrente
   const incarico = await leggiIncarico(immobile.id, anno)
   if (!incarico) {
@@ -261,10 +374,15 @@ async function verificaControLettera(
         'gli allegati vivono solo insieme alla loro lettera, quindi va caricata prima quella.',
       incoerenze: [],
       avvisoCommittente: null,
+      decisione: null,
+      correzione: null,
     }
   }
+  const avviso = avvisoCommittente(scheda, immobile)
   return {
     bloccante: null,
+    decisione: avviso ? ('in-attesa' as const) : null,
+    correzione: null,
     incoerenze: scheda
       ? confrontaConIncarico(scheda, {
           fornitore: incarico.fornitore,
@@ -277,7 +395,7 @@ async function verificaControLettera(
           denominazioneImmobile: immobile.denominazione,
         })
       : [],
-    avvisoCommittente: avvisoCommittente(scheda, immobile),
+    avvisoCommittente: avviso,
   }
 }
 
@@ -294,6 +412,8 @@ async function analizzaUno(
     bloccante: null,
     incoerenze: [],
     avvisoCommittente: null,
+    decisione: null,
+    correzione: null,
   }
   if (!/\.pdf$/i.test(file.name)) {
     return { ...vuoto, bloccante: 'Gli allegati vanno caricati in PDF: questo file è di un altro formato.' }
@@ -347,6 +467,12 @@ function avvisoCommittente(scheda: DatiScheda | null, immobile: Immobile | null)
   const parole = portafoglio.toLowerCase().split(/\s+/).filter((p) => p.length > 3)
   if (parole.some((p) => committente.toLowerCase().includes(p))) return null
   return `Il committente della scheda («${committente}») non somiglia al portafoglio dell'immobile («${portafoglio}»): controlla che sia lo stesso incarico.`
+}
+
+function quantiConPortafoglio(immobili: Immobile[], portafoglio: string | null | undefined): string {
+  if (!portafoglio) return ''
+  const n = immobili.filter((i) => (i.portafoglio ?? '').trim() === portafoglio.trim()).length
+  return `${n} ${n === 1 ? 'immobile' : 'immobili'}`
 }
 
 function etichettaSito(scheda: DatiScheda | null): string | null {

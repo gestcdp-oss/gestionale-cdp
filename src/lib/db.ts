@@ -68,6 +68,8 @@ export type ApiTravi = {
     fornitori(): Promise<RispostaDb<string[]>>
     /** tutti gli incarichi: serve per ritrovare gli immobili di una stessa lettera */
     tutti(): Promise<RispostaDb<IncaricoBM[]>>
+    /** elimina gli incarichi senza lettera (i dati vecchi del monitoraggio) */
+    pulisciSenzaLettera(): Promise<RispostaDb<number>>
     rimuovi(immobileId: string, anno: number): Promise<RispostaDb<null>>
   }
   documenti: {

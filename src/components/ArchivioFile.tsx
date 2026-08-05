@@ -13,6 +13,7 @@ import {
   cancellaArchivioFile,
 } from '../lib/dbBrowser'
 import type { StatoArchivioFile, VoceBackup } from '../lib/dbBrowser'
+import { dbLocale } from '../lib/db'
 import { useToast } from '../hooks/useToast'
 import ConfermaCodice from './ConfermaCodice'
 
@@ -32,6 +33,7 @@ export default function ArchivioFilePannello() {
   const [confermaImporta, setConfermaImporta] = useState(false)
   const [confermaNuovo, setConfermaNuovo] = useState(false)
   const [confermaCancella, setConfermaCancella] = useState(false)
+  const [confermaMonitoraggio, setConfermaMonitoraggio] = useState(false)
   const [copie, setCopie] = useState<VoceBackup[] | null>(null)
   const [copiaScelta, setCopiaScelta] = useState<string | null>(null)
   const [attesa, setAttesa] = useState(false)
@@ -126,6 +128,26 @@ export default function ArchivioFilePannello() {
     mostraEsito(esito)
     setCopie(null)
     void aggiorna()
+  }
+
+  /** Via i dati del vecchio monitoraggio: restano immobili, lettere e allegati. */
+  async function pulisciMonitoraggio() {
+    ripulisci()
+    setConfermaMonitoraggio(false)
+    setAttesa(true)
+    const { data, error } = await dbLocale.bm.pulisciSenzaLettera()
+    setAttesa(false)
+    if (error) {
+      mostraEsito({ ok: false, messaggio: error.message })
+      return
+    }
+    mostraEsito({
+      ok: true,
+      messaggio:
+        data && data > 0
+          ? `Eliminate ${data} schede senza lettera: gli immobili e i dati che vengono dai documenti restano.`
+          : "Non c'era nessuna scheda senza lettera: niente da eliminare.",
+    })
   }
 
   async function mostraCopie() {
@@ -359,6 +381,12 @@ export default function ArchivioFilePannello() {
         </p>
         <div className="mt-3 flex flex-wrap gap-3">
           <button
+            onClick={() => setConfermaMonitoraggio(true)}
+            className="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
+          >
+            Cancella i dati del monitoraggio
+          </button>
+          <button
             onClick={() => setConfermaNuovo(true)}
             className="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
           >
@@ -374,6 +402,24 @@ export default function ArchivioFilePannello() {
           )}
         </div>
       </div>
+
+      {confermaMonitoraggio && (
+        <ConfermaCodice
+          titolo="Cancellare i dati del monitoraggio?"
+          azione="Cancella quei dati"
+          onAnnulla={() => setConfermaMonitoraggio(false)}
+          onConferma={() => void pulisciMonitoraggio()}
+        >
+          <p>
+            Se ne vanno tutte le schede di Building Management <b>senza Lettera di attivazione</b>: sono quelle
+            arrivate dal vecchio foglio di monitoraggio (fornitore, categoria, report, bimestri).
+          </p>
+          <p className="mt-2">
+            <b>Restano</b> gli immobili con i loro dati di anagrafica e tutte le schede che nascono da una
+            lettera, con i relativi allegati.
+          </p>
+        </ConfermaCodice>
+      )}
 
       {confermaNuovo && (
         <ConfermaCodice

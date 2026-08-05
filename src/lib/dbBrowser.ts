@@ -1551,6 +1551,20 @@ export function creaApiBrowser(): ApiTravi {
           await richiediSessione()
           return tutti<IncaricoBM>('bm')
         }),
+      pulisciSenzaLettera: () =>
+        rispondi(async () => {
+          await richiediSessione()
+          // senza lettera un incarico non ha ragione di esistere: i dati veri
+          // arrivano dai documenti, non più dal foglio di monitoraggio
+          const righe = await tutti<IncaricoBM>('bm')
+          let tolti = 0
+          for (const r of righe) {
+            if (r.lettera) continue
+            await togli('bm', r.id)
+            tolti++
+          }
+          return tolti
+        }),
       rimuovi: (immobileId: string, anno: number) =>
         rispondi(async () => {
           await richiediSessione()

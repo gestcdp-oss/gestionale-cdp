@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('travi', {
     anni: (immobileId) => ipcRenderer.invoke('bm:anni', immobileId),
     fornitori: () => ipcRenderer.invoke('bm:fornitori'),
     tutti: () => ipcRenderer.invoke('bm:tutti'),
+    pulisciSenzaLettera: () => ipcRenderer.invoke('bm:pulisci-senza-lettera'),
     rimuovi: (immobileId, anno) => ipcRenderer.invoke('bm:rimuovi', { immobileId, anno }),
   },
   documenti: {

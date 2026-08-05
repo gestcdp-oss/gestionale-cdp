@@ -715,6 +715,16 @@ ipcMain.handle('bm:tutti', () =>
   }),
 )
 
+ipcMain.handle('bm:pulisci-senza-lettera', () =>
+  rispondi(() => {
+    richiediSessione()
+    const esito = db
+      .prepare("delete from bm where lettera_json is null or trim(lettera_json) = '' or lettera_json = 'null'")
+      .run()
+    return esito.changes
+  }),
+)
+
 ipcMain.handle('bm:rimuovi', (_ev, { immobileId, anno }) =>
   rispondi(() => {
     richiediSessione()
