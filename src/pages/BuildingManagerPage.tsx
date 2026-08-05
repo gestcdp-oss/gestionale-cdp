@@ -56,6 +56,11 @@ export default function BuildingManagerPage() {
   const [allegatoDaCancellare, setAllegatoDaCancellare] = useState<AllegatoBM | null>(null)
   const [generaCertificato, setGeneraCertificato] = useState(false)
   const [certificatoDaCancellare, setCertificatoDaCancellare] = useState<CertificatoBM | null>(null)
+  // ordine dell'elenco dei certificati: si cambia dalle intestazioni
+  const [ordineCertificati, setOrdineCertificati] = useState<{
+    colonna: ColonnaCertificati
+    crescente: boolean
+  }>({ colonna: 'data', crescente: false })
 
   // il salvataggio parte da solo poco dopo l'ultima modifica
   const attesaSalvataggio = useRef<number | undefined>(undefined)
@@ -105,7 +110,25 @@ export default function BuildingManagerPage() {
   function segnaReport(mese: number, casella: number) {
     const fatti = campi.report[mese] ?? 0
     const nuovo = fatti > casella ? casella : casella + 1
+    // un mese certificato non si può ridurre: il certificato dice che i report
+    // sono arrivati. Per rimetterci mano bisogna prima cancellare il certificato
+    if (nuovo < fatti && mesiCertificati.has(mese + 1)) {
+      toast.errore(
+        `${MESI[mese]} ha già un Certificato di Avvenuta Prestazione: i report consegnati non si possono togliere. Cancella prima il certificato.`,
+      )
+      return
+    }
     modifica({ report: campi.report.map((v, i) => (i === mese ? nuovo : v)) })
+  }
+
+  /** Clic sull'intestazione: prima volta ordina, le successive girano il verso. */
+  function ordinaCertificatiPer(colonna: ColonnaCertificati) {
+    setOrdineCertificati((o) =>
+      o.colonna === colonna
+        ? { colonna, crescente: !o.crescente }
+        : // le date partono dalla più recente, il resto dall'inizio
+          { colonna, crescente: colonna !== 'data' },
+    )
   }
 
   function modificaBimestre(indice: number, cambio: Partial<BimestreBM>) {
@@ -543,6 +566,14 @@ export default function BuildingManagerPage() {
   const certificati = campi.certificati ?? []
   // i mesi già finiti in un certificato: si riconoscono dalla pergamena
   const mesiCertificati = new Set(certificati.flatMap((c) => c.mesi))
+  const certificatiInOrdine = [...certificati].sort((a, b) => {
+    const verso = ordineCertificati.crescente ? 1 : -1
+    if (ordineCertificati.colonna === 'data')
+      return verso * (Date.parse(a.generatoIl) - Date.parse(b.generatoIl))
+    if (ordineCertificati.colonna === 'mesi')
+      return verso * (Math.min(...a.mesi) - Math.min(...b.mesi))
+    return verso * a.nome.localeCompare(b.nome, 'it')
+  })
   const reportConsegnati = campi.report.reduce((s, n) => s + Math.min(n ?? 0, attesiAlMese), 0)
   const anniElenco = Array.from(new Set([ANNO_CORRENTE, ANNO_CORRENTE + 1, ANNO_CORRENTE - 1, ...anni])).sort(
     (a, b) => b - a,
@@ -859,20 +890,30 @@ export default function BuildingManagerPage() {
                         {mese}
                       </span>
                       <span className="mt-1 flex justify-center gap-1">
-                        {Array.from({ length: attesiAlMese }, (_, n) => (
-                          <button
-                            key={n}
-                            onClick={() => segnaReport(i, n)}
-                            title={`${MESI[i]}: ${n + 1}° report ${fatti > n ? 'consegnato' : 'da consegnare'}`}
-                            className={`h-6 w-6 rounded border text-xs font-bold transition ${
-                              fatti > n
-                                ? 'border-emerald-400 bg-emerald-500 text-white'
-                                : 'border-cielo-300 bg-white text-cielo-300 hover:border-cielo-500'
-                            }`}
-                          >
-                            {fatti > n ? '✓' : ''}
-                          </button>
-                        ))}
+                        {Array.from({ length: attesiAlMese }, (_, n) => {
+                          // le caselle già segnate di un mese certificato sono ferme
+                          const bloccata = certificato && fatti > n
+                          return (
+                            <button
+                              key={n}
+                              onClick={() => segnaReport(i, n)}
+                              title={
+                                bloccata
+                                  ? `${MESI[i]}: certificato emesso, il report non si può togliere`
+                                  : `${MESI[i]}: ${n + 1}° report ${fatti > n ? 'consegnato' : 'da consegnare'}`
+                              }
+                              className={`h-6 w-6 rounded border text-xs font-bold transition ${
+                                fatti > n
+                                  ? `border-emerald-400 bg-emerald-500 text-white ${
+                                      bloccata ? 'cursor-not-allowed' : ''
+                                    }`
+                                  : 'border-cielo-300 bg-white text-cielo-300 hover:border-cielo-500'
+                              }`}
+                            >
+                              {fatti > n ? '✓' : ''}
+                            </button>
+                          )
+                        })}
                       </span>
                     </div>
                   )
@@ -903,17 +944,35 @@ export default function BuildingManagerPage() {
                     <table className="w-full min-w-[520px] text-sm">
                       <thead>
                         <tr className="border-b border-cielo-200 text-left text-xs uppercase tracking-wide text-cielo-500">
-                          <th className="px-2 py-2 font-semibold">Generato il</th>
-                          <th className="px-2 py-2 font-semibold">Mesi certificati</th>
-                          <th className="px-2 py-2 font-semibold">Documento</th>
+                          <ColonnaOrdinabile
+                            titolo="Generato il"
+                            colonna="data"
+                            ordine={ordineCertificati}
+                            onOrdina={ordinaCertificatiPer}
+                          />
+                          <ColonnaOrdinabile
+                            titolo="Mesi certificati"
+                            colonna="mesi"
+                            ordine={ordineCertificati}
+                            onOrdina={ordinaCertificatiPer}
+                          />
+                          <ColonnaOrdinabile
+                            titolo="Documento"
+                            colonna="nome"
+                            ordine={ordineCertificati}
+                            onOrdina={ordinaCertificatiPer}
+                          />
                           <th className="w-8 px-2 py-2" />
                         </tr>
                       </thead>
                       <tbody>
-                        {certificati.map((c) => (
-                          <tr key={c.id} className="group border-b border-cielo-100 last:border-0">
+                        {certificatiInOrdine.map((c) => (
+                          <tr
+                            key={c.id}
+                            className="group border-b border-cielo-100 transition hover:bg-cielo-100 last:border-0"
+                          >
                             <td className="whitespace-nowrap px-2 py-2 text-cielo-700">
-                              {new Date(c.generatoIl).toLocaleDateString('it-IT')}
+                              {dataEOra(c.generatoIl)}
                             </td>
                             <td className="px-2 py-2 text-cielo-700">{mesiPerEsteso(c.mesi)}</td>
                             <td className="px-2 py-2">
@@ -1132,6 +1191,57 @@ function IconaCestino() {
       <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
       <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
       <path d="M10 11v6M14 11v6" />
+    </svg>
+  )
+}
+
+/** Per che cosa si può ordinare l'elenco dei certificati. */
+type ColonnaCertificati = 'data' | 'mesi' | 'nome'
+
+/** "05/08/2026 · 17:11": la data e l'ora in cui il certificato è nato. */
+function dataEOra(quando: string): string {
+  const d = new Date(quando)
+  if (Number.isNaN(d.getTime())) return quando
+  const ora = d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+  return `${d.toLocaleDateString('it-IT')} · ${ora}`
+}
+
+/** Intestazione che ordina l'elenco, con le due freccine del verso. */
+function ColonnaOrdinabile({
+  titolo,
+  colonna,
+  ordine,
+  onOrdina,
+}: {
+  titolo: string
+  colonna: ColonnaCertificati
+  ordine: { colonna: ColonnaCertificati; crescente: boolean }
+  onOrdina: (colonna: ColonnaCertificati) => void
+}) {
+  const attiva = ordine.colonna === colonna
+  return (
+    <th className="px-2 py-2 font-semibold">
+      <button
+        onClick={() => onOrdina(colonna)}
+        title={`Ordina per ${titolo.toLowerCase()}`}
+        className={`flex items-center gap-1 uppercase tracking-wide transition hover:text-cielo-700 ${
+          attiva ? 'text-cielo-700' : ''
+        }`}
+      >
+        {titolo}
+        <IconaOrdine attiva={attiva} crescente={ordine.crescente} />
+      </button>
+    </th>
+  )
+}
+
+function IconaOrdine({ attiva, crescente }: { attiva: boolean; crescente: boolean }) {
+  const acceso = 'fill-cielo-700'
+  const spento = 'fill-cielo-300'
+  return (
+    <svg width="9" height="13" viewBox="0 0 10 14" className="shrink-0">
+      <path d="M5 1 8.6 5.6H1.4z" className={attiva && crescente ? acceso : spento} />
+      <path d="M5 13 1.4 8.4h7.2z" className={attiva && !crescente ? acceso : spento} />
     </svg>
   )
 }
